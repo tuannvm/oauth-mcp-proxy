@@ -15,10 +15,11 @@
 ### Tasks
 
 - [ ] Initialize go.mod (`go mod init github.com/tuannvm/oauth-mcp-proxy`)
+- [ ] Add 4 required dependencies (mcp-go, go-oidc, jwt, oauth2)
 - [ ] Copy all `.go` files from `../mcp-trino/internal/oauth/`
 - [ ] Set up .gitignore, LICENSE (MIT)
-- [ ] Update imports from `internal/oauth` → root package
-- [ ] Commit: "Initial extraction from mcp-trino"
+- [ ] First commit: "Initial extraction from mcp-trino"
+- [ ] Run `go mod tidy`
 
 ### Implementation Notes
 
@@ -51,9 +52,12 @@
 
 ### Tasks
 
-- [ ] Fix global token cache → Instance-scoped (move to internal/cache/)
-- [ ] Add Logger interface → No hardcoded log.Printf()
-- [ ] Add Config.Validate() method → Fail fast on invalid config
+- [ ] Fix ALL global state
+  - [ ] Global token cache → Server.cache (instance-scoped)
+  - [ ] Move cache implementation to internal/cache/
+  - [ ] Global middleware registry → Remove/instance-scope
+- [ ] Add Logger interface → Replace all log.Printf() calls
+- [ ] Add Config.Validate() method → Validate mode, provider, required fields
 
 ### Implementation Notes
 
@@ -68,8 +72,9 @@
 ### Tasks
 
 - [ ] Move providers to provider/ package
-- [ ] Keep handlers in ROOT (need Server internals)
-- [ ] Move cache to internal/cache/
+- [ ] Handlers stay in ROOT (need Server internals)
+- [ ] Middleware stays in ROOT (needs Server, mcp-go types)
+- [ ] Cache already in internal/cache/ (done in Phase 1.5)
 - [ ] Update imports
 
 ### Implementation Notes
@@ -85,8 +90,13 @@
 ### Tasks
 
 - [ ] Implement oauth.EnableOAuth() in ROOT package
-- [ ] Auto-detect mode with validation
-- [ ] Test both modes
+  - [ ] Call NewServer() with validation
+  - [ ] Apply middleware to mcpServer
+  - [ ] Register handlers on mux
+  - [ ] Set up HTTPContextFunc
+  - [ ] Auto-detect mode with validation
+- [ ] Test both native and proxy modes
+- [ ] Test error handling
 
 ### Implementation Notes
 
@@ -141,6 +151,7 @@
 | 2025-10-17 | Planning | Library is MCP-only (no adapter pattern) | Name indicates this, no need for abstraction |
 | 2025-10-17 | Planning | Handlers stay in root (not handler/) | Need access to Server internals |
 | 2025-10-17 | Planning | Added Phase 1.5: Critical Architecture | Fix global state, logging, validation in v0.1.0 |
+| 2025-10-17 | Planning | Final plan review - fixed inconsistencies | Clarified cache location, middleware.go, removed adapter references |
 
 ---
 

@@ -36,6 +36,17 @@ OAuth 2.1 authentication library for MCP servers
 go get github.com/tuannvm/oauth-mcp-proxy
 ```
 
+## Dependencies
+
+This library requires 4 external dependencies:
+
+- **`github.com/mark3labs/mcp-go`** (v0.38.0) - MCP protocol and server
+- **`github.com/coreos/go-oidc/v3`** (v3.15.0) - OIDC/JWKS validation
+- **`github.com/golang-jwt/jwt/v5`** (v5.3.0) - JWT/HMAC validation
+- **`golang.org/x/oauth2`** (v0.30.0) - OAuth 2.0 flows
+
+All dependencies are well-maintained, industry-standard Go libraries.
+
 ## Usage
 
 ### Embedded Mode (Library)

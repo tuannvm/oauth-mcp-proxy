@@ -21,6 +21,41 @@
 
 **Standalone Mode:** Deferred to v0.2.0+ (see [plan-standalone.md](plan-standalone.md))
 
+**Dependencies:** This library requires 4 external dependencies (carried over from mcp-trino)
+
+---
+
+## Dependencies
+
+### Required (Direct)
+
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `github.com/mark3labs/mcp-go` | v0.38.0 | MCP protocol types and server |
+| `github.com/coreos/go-oidc/v3` | v3.15.0 | OIDC discovery and JWT verification |
+| `github.com/golang-jwt/jwt/v5` | v5.3.0 | HMAC-SHA256 token validation |
+| `golang.org/x/oauth2` | v0.30.0 | OAuth 2.0 client flows (proxy mode) |
+
+### Transitive (Indirect)
+
+- `github.com/go-jose/go-jose/v4` - JWKS/JWE handling (via go-oidc)
+- `golang.org/x/crypto` - Cryptographic primitives
+- `golang.org/x/net` - HTTP/2 support
+
+### To Remove (Trino-specific)
+
+- ❌ `github.com/tuannvm/mcp-trino/internal/config` - Removed in Phase 1
+
+### Note on Dependencies
+
+**All 4 dependencies are necessary:**
+- **mcp-go:** Core MCP integration (library is MCP-only)
+- **go-oidc:** Industry-standard OIDC library (no good alternatives)
+- **jwt:** Standard Go JWT library (minimal, well-maintained)
+- **oauth2:** Official Go OAuth2 library (maintained by Go team)
+
+**No optional dependencies** - All required for core functionality
+
 ---
 
 ## Package Structure (Simplified for MCP-Only)
@@ -28,6 +63,7 @@
 ```
 oauth-mcp-proxy/
 ├── oauth.go              // Server, Config, NewServer(), EnableOAuth()
+├── middleware.go         // OAuth middleware for MCP (uses Server)
 ├── token.go              // Token validation logic
 ├── user.go               // User type
 ├── handler_authorize.go  // OAuth handlers in ROOT (need Server internals)
@@ -43,7 +79,7 @@ oauth-mcp-proxy/
 │   ├── oidc.go           // OIDC/JWKS validator
 │   └── provider_test.go
 ├── internal/
-│   ├── cache/            // Token cache (instance-scoped)
+│   ├── cache/            // Token cache (instance-scoped, fixed in Phase 1.5)
 │   │   └── cache.go
 │   ├── pkce.go
 │   ├── state.go
@@ -57,9 +93,10 @@ oauth-mcp-proxy/
 
 **Key Decisions:**
 - ✅ Handlers in ROOT (need access to Server internals)
+- ✅ Middleware in ROOT (needs Server, creates MCP middleware)
 - ✅ Providers in provider/ (self-contained)
 - ✅ NO adapter/ (library is MCP-only, no abstraction needed)
-- ✅ Cache in internal/ (not public API)
+- ✅ Cache in internal/cache/ (moved in Phase 1.5, not public API)
 
 ---
 
@@ -219,12 +256,17 @@ if c.Mode == "proxy" {
 **Goal:** Copy code as-is
 
 **Tasks:**
-- [ ] Initialize go.mod
+- [ ] Initialize go.mod (`go mod init github.com/tuannvm/oauth-mcp-proxy`)
+- [ ] Add required dependencies to go.mod:
+  - [ ] `github.com/mark3labs/mcp-go v0.38.0`
+  - [ ] `github.com/coreos/go-oidc/v3 v3.15.0`
+  - [ ] `github.com/golang-jwt/jwt/v5 v5.3.0`
+  - [ ] `golang.org/x/oauth2 v0.30.0`
 - [ ] Copy all `.go` files from `../mcp-trino/internal/oauth/`
 - [ ] Set up .gitignore, LICENSE (MIT)
 - [ ] First commit: "Initial extraction from mcp-trino"
 
-**Success:** Code copied, go.mod exists
+**Success:** Code copied, go.mod with dependencies, `go mod tidy` works
 
 ---
 
@@ -247,9 +289,12 @@ if c.Mode == "proxy" {
 **Goal:** Fix fundamental issues before structuring
 
 **Critical Fixes (from Gemini 2.5 Pro review):**
-- [ ] **Fix global token cache** → Instance-scoped (in internal/cache/)
-- [ ] **Add Logger interface** → No hardcoded log.Printf()
-- [ ] **Add Config.Validate()** → Fail fast on invalid config
+- [ ] **Fix ALL global state**
+  - [ ] Global token cache → Instance-scoped in Server struct
+  - [ ] Move cache implementation to internal/cache/
+  - [ ] Global middleware registry → Remove (if exists)
+- [ ] **Add Logger interface** → Replace all log.Printf() calls
+- [ ] **Add Config.Validate()** → Validate mode, provider, required fields
 
 **Why now, not v0.2.0:**
 - Prevents breaking changes in v0.2.0
@@ -257,7 +302,7 @@ if c.Mode == "proxy" {
 - Global state blocks multi-instance usage
 - Hardcoded logging unusable in production
 
-**Success:** No global state, logger interface works, config validates
+**Success:** Zero global variables, logger interface works, config validates on NewServer()
 
 ---
 
@@ -270,28 +315,32 @@ if c.Mode == "proxy" {
   - [ ] provider/provider.go (TokenValidator interface)
   - [ ] provider/hmac.go
   - [ ] provider/oidc.go
-- [ ] **Keep handlers in ROOT** (they need Server internals)
-- [ ] Move cache to internal/cache/
+- [ ] **Handlers stay in ROOT** (they need Server internals)
+- [ ] **Middleware stays in ROOT** (needs Server, mcp-go types)
+- [ ] Cache already in internal/cache/ (done in Phase 1.5)
 - [ ] Update imports across codebase
 
-**Success:** Clean package structure, handlers in root, still compiles
+**Success:** Clean package structure, only providers moved, still compiles
 
 ---
 
 ### Phase 3: Simple API Implementation
 
-**Goal:** Implement EnableOAuth() function
+**Goal:** Implement EnableOAuth() convenience function
 
 **Tasks:**
 - [ ] **Implement `oauth.EnableOAuth()` in ROOT package**
-  - [ ] Auto-detect native vs proxy mode (with validation)
-  - [ ] Apply middleware to mcpServer
-  - [ ] Register HTTP handlers on mux
-  - [ ] Return HTTPContextFunc for streamable server
-- [ ] Add mode validation (fail fast on misconfiguration)
+  - [ ] Create Server internally (calls NewServer with validation)
+  - [ ] Apply middleware to mcpServer (using existing middleware.go)
+  - [ ] Register HTTP handlers on mux (using Server.RegisterHandlers)
+  - [ ] Set up HTTPContextFunc for token extraction
+  - [ ] Auto-detect mode if not specified (with validation)
 - [ ] Test both native and proxy modes work
+- [ ] Test error handling for invalid configs
 
 **Success:** EnableOAuth() works for both modes, clear error messages
+
+**Note:** This wraps existing Server/middleware/handler code into one convenient call
 
 ---
 
@@ -385,30 +434,31 @@ See [plan-standalone.md](plan-standalone.md):
 ### Architecture Cleanup (Remaining Issues)
 **Rationale:** Fixed critical 3 in v0.1.0 (Phase 1.5), defer others to v0.2.0
 
-**Fixed in v0.1.0:**
-- ✅ Global Token Cache → Instance-scoped (Phase 1.5)
-- ✅ Hardcoded Logging → Logger interface (Phase 1.5)
-- ✅ Configuration Validation → Validate() method (Phase 1.5)
+**Fixed in v0.1.0 (Phase 1.5):**
+- ✅ All Global State → Instance-scoped
+  - Global Token Cache → Server.cache
+  - Global Middleware Registry → Removed/instance-scoped
+- ✅ Hardcoded Logging → Logger interface
+- ✅ Configuration Validation → Validate() method
 
 **Deferred to v0.2.0:**
-1. Global Middleware Registry → Remove
-2. Private Context Keys → Public accessors
-3. Error Handling → Sentinel errors
-4. Missing Graceful Shutdown → Start/Stop
-5. External Call Timeouts → Configurable
-6. Context Cancellation → Audit paths
+1. Private Context Keys → Public accessors
+2. Error Handling → Sentinel errors (use standard errors for now)
+3. Graceful Shutdown → Start/Stop methods
+4. External Call Timeouts → Configurable
+5. Context Cancellation → Comprehensive audit
 
-**Note:** Critical issues fixed in v0.1.0, quality improvements in v0.2.0
+**Note:** Critical issues (globals, logging, validation) fixed in v0.1.0 to prevent breaking v0.2.0
 
 ---
 
 ## Success Criteria
 
 ### Functional
-- Embedded mode works
-- All 4 providers work
-- Token caching works
-- MCP adapter integrates seamlessly
+- Embedded mode works (EnableOAuth() function)
+- All 4 providers work (HMAC, Okta, Google, Azure)
+- Both modes work (native + proxy)
+- Token caching reduces load
 - mcp-trino migrates (zero breaking changes)
 
 ### Non-Functional
@@ -430,14 +480,14 @@ See [plan-standalone.md](plan-standalone.md):
 ## Key Principles
 
 1. **Simplest API:** One function call (`EnableOAuth`) for MCP developers
-2. **Embedded First:** v0.1.0 focuses exclusively on library
-3. **Auto-Magic:** Auto-detect native vs proxy mode from config
-4. **Working First:** Make it work (v0.1.0), make it perfect (v0.2.0)
-5. **Ship Fast:** Tests pass = ship, don't wait for perfect architecture
+2. **MCP-Only:** Library exclusively for MCP servers (no generic abstraction)
+3. **Embedded First:** v0.1.0 focuses on library mode only
+4. **Quality First:** Fix critical architecture (globals, logging, validation) in v0.1.0
+5. **Ship Smart:** Fix fundamentals now, defer nice-to-haves to v0.2.0
 6. **Isolation:** mcp-trino unchanged during development
 7. **Focus:** OAuth only, no Trino coupling
-8. **Minimal Changes:** Copy → Compile → Structure → Test → Document → Ship
-9. **Defer Perfection:** Architecture cleanup and standalone mode in v0.2.0
+8. **Minimal Changes:** Copy → Compile → Fix Critical → Structure → Test → Ship
+9. **Defer Complexity:** Standalone mode and advanced features in v0.2.0
 
 ---
 
