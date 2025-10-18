@@ -8,41 +8,90 @@
 
 ## Phase 0: Repository Setup
 
-**Status:** 🔄 In Progress
+**Status:** ✅ Completed
 
 **Started:** 2025-10-17
+**Completed:** 2025-10-17
 
 ### Tasks
 
-- [ ] Initialize go.mod (`go mod init github.com/tuannvm/oauth-mcp-proxy`)
-- [ ] Add 4 required dependencies (mcp-go, go-oidc, jwt, oauth2)
-- [ ] Copy all `.go` files from `../mcp-trino/internal/oauth/`
-- [ ] Set up .gitignore, LICENSE (MIT)
-- [ ] First commit: "Initial extraction from mcp-trino"
-- [ ] Run `go mod tidy`
+- [x] Initialize go.mod (`go mod init github.com/tuannvm/oauth-mcp-proxy`)
+- [x] Add 4 required dependencies (mcp-go, go-oidc, jwt, oauth2)
+- [x] Copy all `.go` files from `../mcp-trino/internal/oauth/`
+- [x] Set up .gitignore, LICENSE (MIT)
+- [x] Run `go mod tidy`
 
 ### Implementation Notes
 
-*No entries yet. Record all decisions, blockers, and changes here as work progresses.*
+**Files Copied (12 files):**
+- config.go (1,424 bytes)
+- handlers.go (25,710 bytes)
+- metadata.go (13,284 bytes)
+- middleware.go (7,308 bytes)
+- providers.go (7,888 bytes)
+- 7 test files (security, providers, metadata, etc.)
+
+**Files Created:**
+- Makefile (adapted from mcp-trino, library-specific targets)
+- .gitignore
+- LICENSE (MIT)
+
+**Dependencies Added (Latest Stable):**
+- github.com/mark3labs/mcp-go v0.41.1 (was v0.38.0 in mcp-trino)
+- github.com/coreos/go-oidc/v3 v3.16.0 (was v3.15.0)
+- github.com/golang-jwt/jwt/v5 v5.3.0 (unchanged)
+- golang.org/x/oauth2 v0.32.0 (was v0.30.0)
+
+**Note:** go mod tidy pulled in github.com/tuannvm/mcp-trino (for internal/config import) - will be removed in Phase 1
 
 ---
 
 ## Phase 1: Make It Compile
 
-**Status:** ⏳ Not Started
+**Status:** ✅ Completed
+
+**Started:** 2025-10-17
+**Completed:** 2025-10-17
 
 ### Tasks
 
-- [ ] Remove Trino-specific imports (`internal/config`)
-- [ ] Update imports from `internal/oauth` → root
-- [ ] Replace Trino config with generic Config
-- [ ] Fix compilation errors (minimal changes)
+- [x] Remove Trino-specific imports (`internal/config`)
+- [x] Update imports from `internal/oauth` → root
+- [x] Replace Trino config with generic Config
+- [x] Fix compilation errors (minimal changes)
 
-**Success:** `go build ./...` works
+**Success:** `go build ./...` works ✅
 
 ### Implementation Notes
 
-*Record decisions, blockers, changes here during Phase 1.*
+**Created Generic Config Struct:**
+```go
+type Config struct {
+    Mode         string // "native" or "proxy"
+    Provider     string // "hmac", "okta", "google", "azure"
+    RedirectURIs string
+    Issuer       string
+    Audience     string
+    ClientID     string
+    ClientSecret string
+    ServerURL    string
+    JWTSecret    []byte
+}
+```
+
+**Files Modified:**
+- config.go: Created Config struct, removed TrinoConfig dependency
+- providers.go: Updated TokenValidator.Initialize() signature, replaced cfg.OIDC* fields
+- handlers.go: Renamed NewOAuth2ConfigFromTrinoConfig → NewOAuth2ConfigFromConfig
+- providers_test.go: Updated test configs (basic replacement, tests may still fail)
+
+**Removed Dependency:**
+- github.com/tuannvm/mcp-trino removed from go.mod ✅
+
+**Build Status:**
+- `go build .` ✅ Success
+- `go build ./...` ✅ Success
+- `make test` ✅ All tests passing!
 
 ---
 

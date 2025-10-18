@@ -6,7 +6,7 @@ OAuth 2.1 authentication library for MCP servers
 
 🚧 **In Development** - Extracting from [mcp-trino](https://github.com/tuannvm/mcp-trino)
 
-**Current Phase:** Phase 0 - Repository Setup
+**Current Phase:** Phase 1.5 - Critical Architecture Fixes
 
 ## Quick Links
 
@@ -40,10 +40,10 @@ go get github.com/tuannvm/oauth-mcp-proxy
 
 This library requires 4 external dependencies:
 
-- **`github.com/mark3labs/mcp-go`** (v0.38.0) - MCP protocol and server
-- **`github.com/coreos/go-oidc/v3`** (v3.15.0) - OIDC/JWKS validation
+- **`github.com/mark3labs/mcp-go`** (v0.41.1) - MCP protocol and server
+- **`github.com/coreos/go-oidc/v3`** (v3.16.0) - OIDC/JWKS validation
 - **`github.com/golang-jwt/jwt/v5`** (v5.3.0) - JWT/HMAC validation
-- **`golang.org/x/oauth2`** (v0.30.0) - OAuth 2.0 flows
+- **`golang.org/x/oauth2`** (v0.32.0) - OAuth 2.0 flows
 
 All dependencies are well-maintained, industry-standard Go libraries.
 
@@ -74,14 +74,30 @@ Deferred to v0.2.0 - See [plan-standalone.md](docs/plan-standalone.md) for detai
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| Phase 0 | 🔄 Current | Repository setup, copy code |
-| Phase 1 | ⏳ Planned | Make it compile |
-| Phase 1.5 | ⏳ Planned | Fix critical architecture (global state, logging, validation) |
+| Phase 0 | ✅ Complete | Repository setup, copy code |
+| Phase 1 | ✅ Complete | Make it compile |
+| Phase 1.5 | 🔄 Current | Fix critical architecture (global state, logging, validation) |
 | Phase 2 | ⏳ Planned | Package structure (provider/ only) |
 | Phase 3 | ⏳ Planned | Implement EnableOAuth() API |
 | Phase 4 | ⏳ Planned | OAuth-only tests (validate it works!) |
 | Phase 5 | ⏳ Planned | Documentation + examples |
 | Phase 6 | ⏳ Planned | mcp-trino migration |
+
+## Development
+
+```bash
+# Run tests
+make test
+
+# Run tests with coverage
+make test-coverage
+
+# Run linters
+make lint
+
+# Format code
+make fmt
+```
 
 ## Contributing
 

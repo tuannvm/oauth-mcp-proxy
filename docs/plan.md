@@ -31,10 +31,10 @@
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `github.com/mark3labs/mcp-go` | v0.38.0 | MCP protocol types and server |
-| `github.com/coreos/go-oidc/v3` | v3.15.0 | OIDC discovery and JWT verification |
+| `github.com/mark3labs/mcp-go` | v0.41.1 | MCP protocol types and server |
+| `github.com/coreos/go-oidc/v3` | v3.16.0 | OIDC discovery and JWT verification |
 | `github.com/golang-jwt/jwt/v5` | v5.3.0 | HMAC-SHA256 token validation |
-| `golang.org/x/oauth2` | v0.30.0 | OAuth 2.0 client flows (proxy mode) |
+| `golang.org/x/oauth2` | v0.32.0 | OAuth 2.0 client flows (proxy mode) |
 
 ### Transitive (Indirect)
 
@@ -257,16 +257,16 @@ if c.Mode == "proxy" {
 
 **Tasks:**
 - [ ] Initialize go.mod (`go mod init github.com/tuannvm/oauth-mcp-proxy`)
-- [ ] Add required dependencies to go.mod:
-  - [ ] `github.com/mark3labs/mcp-go v0.38.0`
-  - [ ] `github.com/coreos/go-oidc/v3 v3.15.0`
-  - [ ] `github.com/golang-jwt/jwt/v5 v5.3.0`
-  - [ ] `golang.org/x/oauth2 v0.30.0`
+- [ ] Add required dependencies to go.mod (latest stable):
+  - [ ] `github.com/mark3labs/mcp-go@latest` (v0.41.1)
+  - [ ] `github.com/coreos/go-oidc/v3@latest` (v3.16.0)
+  - [ ] `github.com/golang-jwt/jwt/v5@latest` (v5.3.0)
+  - [ ] `golang.org/x/oauth2@latest` (v0.32.0)
 - [ ] Copy all `.go` files from `../mcp-trino/internal/oauth/`
-- [ ] Set up .gitignore, LICENSE (MIT)
+- [ ] Set up .gitignore, LICENSE (MIT), Makefile
 - [ ] First commit: "Initial extraction from mcp-trino"
 
-**Success:** Code copied, go.mod with dependencies, `go mod tidy` works
+**Success:** Code copied, go.mod with dependencies, `make test` available
 
 ---
 
