@@ -1,6 +1,8 @@
 # oauth-mcp-proxy - MVP Scope (v0.1.0)
 
-> **Goal:** Dual-mode OAuth library (embedded + standalone) that works from day 1
+> **⚠️ SUPERSEDED:** This document has been consolidated into `docs/plan.md`
+>
+> **See:** [docs/plan.md](plan.md) for the canonical reference
 
 ## Executive Summary
 
