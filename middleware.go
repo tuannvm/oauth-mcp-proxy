@@ -35,10 +35,6 @@ type CachedToken struct {
 	ExpiresAt time.Time
 }
 
-// Global token cache
-var tokenCache = &TokenCache{
-	cache: make(map[string]*CachedToken),
-}
 
 // WithOAuthToken adds an OAuth token to the context
 func WithOAuthToken(ctx context.Context, token string) context.Context {
@@ -95,20 +91,14 @@ func (tc *TokenCache) setCachedToken(tokenHash string, user *User, expiresAt tim
 	}
 }
 
-// OAuthMiddleware creates an authentication middleware for MCP tools
-func OAuthMiddleware(validator TokenValidator, enabled bool) func(server.ToolHandlerFunc) server.ToolHandlerFunc {
+// Middleware returns an authentication middleware for MCP tools
+func (s *Server) Middleware() func(server.ToolHandlerFunc) server.ToolHandlerFunc {
 	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			if !enabled {
-				// OAuth disabled, allow all requests
-				log.Printf("OAuth: Authentication disabled - allowing tool: %s", req.Params.Name)
-				return next(ctx, req)
-			}
-
 			// Extract token from context (set by HTTP middleware)
 			tokenString, ok := GetOAuthToken(ctx)
 			if !ok {
-				log.Printf("OAuth: No token found in context for tool: %s", req.Params.Name)
+				s.logger.Info("No token found in context for tool: %s", req.Params.Name)
 				return nil, fmt.Errorf("authentication required: missing OAuth token")
 			}
 
@@ -116,8 +106,8 @@ func OAuthMiddleware(validator TokenValidator, enabled bool) func(server.ToolHan
 			tokenHash := fmt.Sprintf("%x", sha256.Sum256([]byte(tokenString)))
 
 			// Check cache first
-			if cached, exists := tokenCache.getCachedToken(tokenHash); exists {
-				log.Printf("OAuth: Using cached authentication for tool: %s (user: %s)", req.Params.Name, cached.User.Username)
+			if cached, exists := s.cache.getCachedToken(tokenHash); exists {
+				s.logger.Info("Using cached authentication for tool: %s (user: %s)", req.Params.Name, cached.User.Username)
 				ctx = context.WithValue(ctx, userContextKey, cached.User)
 				return next(ctx, req)
 			}
@@ -125,26 +115,47 @@ func OAuthMiddleware(validator TokenValidator, enabled bool) func(server.ToolHan
 			// Log token hash for debugging (prevents sensitive data exposure)
 			tokenHashFull := fmt.Sprintf("%x", sha256.Sum256([]byte(tokenString)))
 			tokenHashPreview := tokenHashFull[:16] + "..."
-			log.Printf("OAuth: Validating token for tool %s (hash: %s)", req.Params.Name, tokenHashPreview)
+			s.logger.Info("Validating token for tool %s (hash: %s)", req.Params.Name, tokenHashPreview)
 
 			// Validate token using configured provider
-			user, err := validator.ValidateToken(tokenString)
+			user, err := s.validator.ValidateToken(tokenString)
 			if err != nil {
-				log.Printf("OAuth: Token validation failed for tool %s: %v", req.Params.Name, err)
+				s.logger.Error("Token validation failed for tool %s: %v", req.Params.Name, err)
 				return nil, fmt.Errorf("authentication failed: %w", err)
 			}
 
 			// Cache the validation result (expire in 5 minutes)
 			expiresAt := time.Now().Add(5 * time.Minute)
-			tokenCache.setCachedToken(tokenHash, user, expiresAt)
+			s.cache.setCachedToken(tokenHash, user, expiresAt)
 
 			// Add user to context for downstream handlers
 			ctx = context.WithValue(ctx, userContextKey, user)
-			log.Printf("OAuth: Authenticated user %s for tool: %s (cached for 5 minutes)", user.Username, req.Params.Name)
+			s.logger.Info("Authenticated user %s for tool: %s (cached for 5 minutes)", user.Username, req.Params.Name)
 
 			return next(ctx, req)
 		}
 	}
+}
+
+// OAuthMiddleware creates an authentication middleware (legacy function for compatibility)
+// Deprecated: Use NewServer() and Server.Middleware() instead
+func OAuthMiddleware(validator TokenValidator, enabled bool) func(server.ToolHandlerFunc) server.ToolHandlerFunc {
+	// Create a temporary server for legacy compatibility
+	cache := &TokenCache{cache: make(map[string]*CachedToken)}
+	s := &Server{
+		validator: validator,
+		cache:     cache,
+		logger:    &defaultLogger{},
+	}
+
+	if !enabled {
+		// Return passthrough middleware
+		return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+			return next
+		}
+	}
+
+	return s.Middleware()
 }
 
 // User represents an authenticated user

@@ -26,6 +26,7 @@ import (
 type OAuth2Handler struct {
 	config       *OAuth2Config
 	oauth2Config *oauth2.Config
+	logger       Logger
 }
 
 // GetConfig returns the OAuth2 configuration
@@ -35,9 +36,9 @@ func (h *OAuth2Handler) GetConfig() *OAuth2Config {
 
 // OAuth2Config holds OAuth2 configuration
 type OAuth2Config struct {
-	Enabled      bool
-	Mode         string // "native" or "proxy"
-	Provider     string
+	Enabled     bool
+	Mode        string // "native" or "proxy"
+	Provider    string
 	RedirectURIs string
 
 	// OIDC configuration
@@ -62,7 +63,11 @@ type OAuth2Config struct {
 }
 
 // NewOAuth2Handler creates a new OAuth2 handler using the standard library
-func NewOAuth2Handler(cfg *OAuth2Config) *OAuth2Handler {
+func NewOAuth2Handler(cfg *OAuth2Config, logger Logger) *OAuth2Handler {
+	if logger == nil {
+		logger = &defaultLogger{}
+	}
+
 	var endpoint oauth2.Endpoint
 
 	// Use OIDC discovery for supported providers, fallback to hardcoded for others
@@ -70,7 +75,7 @@ func NewOAuth2Handler(cfg *OAuth2Config) *OAuth2Handler {
 	case "okta", "google", "azure":
 		// Use OIDC discovery to get correct endpoints
 		if discoveredEndpoint, err := discoverOIDCEndpoints(cfg.Issuer); err != nil {
-			log.Printf("ERROR: OIDC discovery failed for %s provider. Using Okta-style fallback endpoints which may not work for all providers: %v", cfg.Provider, err)
+			logger.Error("OIDC discovery failed for %s provider. Using Okta-style fallback endpoints which may not work for all providers: %v", cfg.Provider, err)
 			// Fallback to Okta-style endpoints as they're most common
 			endpoint = oauth2.Endpoint{
 				AuthURL:  cfg.Issuer + "/oauth2/v1/authorize",
@@ -96,20 +101,20 @@ func NewOAuth2Handler(cfg *OAuth2Config) *OAuth2Handler {
 
 	// Log client configuration type for debugging
 	if cfg.ClientSecret == "" {
-		log.Printf("OAuth2: Configuring public client (no client secret)")
+		logger.Info("Configuring public client (no client secret)")
 	} else {
-		log.Printf("OAuth2: Configuring confidential client (with client secret)")
+		logger.Info("Configuring confidential client (with client secret)")
 	}
 
 	// Initialize state signing key
 	if len(cfg.stateSigningKey) == 0 {
-		log.Printf("WARNING: No state signing key configured, generating random key (will not persist across restarts)")
+		logger.Warn("No state signing key configured, generating random key (will not persist across restarts)")
 		key := make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
-			log.Printf("ERROR: Failed to generate state signing key: %v", err)
+			logger.Error("Failed to generate state signing key: %v", err)
 			// Use a deterministic fallback (not ideal, but better than nothing)
 			cfg.stateSigningKey = []byte("insecure-fallback-key-please-configure-JWT_SECRET")
-			log.Printf("WARNING: Using insecure fallback key. Please configure JWT_SECRET environment variable.")
+			logger.Warn("Using insecure fallback key. Please configure JWT_SECRET environment variable.")
 		} else {
 			cfg.stateSigningKey = key
 		}
@@ -118,6 +123,7 @@ func NewOAuth2Handler(cfg *OAuth2Config) *OAuth2Handler {
 	return &OAuth2Handler{
 		config:       cfg,
 		oauth2Config: oauth2Config,
+		logger:       logger,
 	}
 }
 
@@ -172,20 +178,20 @@ func NewOAuth2ConfigFromConfig(cfg *Config, version string) *OAuth2Config {
 	}
 
 	return &OAuth2Config{
-		Enabled:         true, // Always enabled if creating handler
-		Mode:            cfg.Mode,
-		Provider:        cfg.Provider,
-		RedirectURIs:    cfg.RedirectURIs,
-		Issuer:          cfg.Issuer,
-		Audience:        cfg.Audience,
-		ClientID:        cfg.ClientID,
-		ClientSecret:    cfg.ClientSecret,
-		MCPHost:         mcpHost,
-		MCPPort:         mcpPort,
-		MCPURL:          mcpURL,
-		Scheme:          scheme,
-		Version:         version,
-		stateSigningKey: cfg.JWTSecret,
+		Enabled:          true,
+		Mode:             cfg.Mode,
+		Provider:         cfg.Provider,
+		RedirectURIs:     cfg.RedirectURIs,
+		Issuer:           cfg.Issuer,
+		Audience:         cfg.Audience,
+		ClientID:         cfg.ClientID,
+		ClientSecret:     cfg.ClientSecret,
+		MCPHost:          mcpHost,
+		MCPPort:          mcpPort,
+		MCPURL:           mcpURL,
+		Scheme:           scheme,
+		Version:          version,
+		stateSigningKey:  cfg.JWTSecret,
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -25,6 +24,7 @@ type HMACValidator struct {
 	secret     string
 	audience   string
 	secretOnce sync.Once
+	logger     Logger
 }
 
 // OIDCValidator validates JWT tokens using OIDC/JWKS (Okta, Google, Azure)
@@ -32,6 +32,7 @@ type OIDCValidator struct {
 	verifier *oidc.IDTokenVerifier
 	provider *oidc.Provider
 	audience string
+	logger   Logger
 }
 
 // Initialize sets up the HMAC validator with JWT secret and audience
@@ -178,7 +179,7 @@ func (v *OIDCValidator) Initialize(cfg *Config) error {
 		SkipIssuerCheck:      false, // Verify issuer
 	})
 
-	log.Printf("OAuth: OIDC validator initialized with audience validation: %s", cfg.Audience)
+	v.logger.Info("OAuth: OIDC validator initialized with audience validation: %s", cfg.Audience)
 
 	v.provider = provider
 	v.verifier = verifier

@@ -6,7 +6,7 @@ OAuth 2.1 authentication library for MCP servers
 
 🚧 **In Development** - Extracting from [mcp-trino](https://github.com/tuannvm/mcp-trino)
 
-**Current Phase:** Phase 1.5 - Critical Architecture Fixes
+**Current Phase:** Phase 2 - Package Structure
 
 ## Quick Links
 
@@ -76,8 +76,8 @@ Deferred to v0.2.0 - See [plan-standalone.md](docs/plan-standalone.md) for detai
 |-------|--------|-------------|
 | Phase 0 | ✅ Complete | Repository setup, copy code |
 | Phase 1 | ✅ Complete | Make it compile |
-| Phase 1.5 | 🔄 Current | Fix critical architecture (global state, logging, validation) |
-| Phase 2 | ⏳ Planned | Package structure (provider/ only) |
+| Phase 1.5 | ✅ Complete | Fix critical architecture (global state, logging, validation) |
+| Phase 2 | 🔄 Current | Package structure (provider/ only) |
 | Phase 3 | ⏳ Planned | Implement EnableOAuth() API |
 | Phase 4 | ⏳ Planned | OAuth-only tests (validate it works!) |
 | Phase 5 | ⏳ Planned | Documentation + examples |
