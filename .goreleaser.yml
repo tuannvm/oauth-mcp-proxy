@@ -1,0 +1,64 @@
+# GoReleaser configuration for Go library
+# This project is a library, not a binary, so we skip builds and only generate releases
+
+version: 2
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+# Skip binary builds (this is a library)
+builds:
+  - skip: true
+
+# Generate changelog
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Security
+      regexp: '^.*?sec(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Other Changes
+      order: 999
+
+# GitHub Release configuration
+release:
+  draft: false
+  prerelease: auto
+  mode: append
+  header: |
+    ## OAuth MCP Proxy {{ .Tag }}
+
+    OAuth 2.1 authentication library for Go MCP servers.
+
+    ### Installation
+    ```bash
+    go get github.com/tuannvm/oauth-mcp-proxy@{{ .Tag }}
+    ```
+
+    ### Documentation
+    - [README](https://github.com/tuannvm/oauth-mcp-proxy#readme)
+    - [GoDoc](https://pkg.go.dev/github.com/tuannvm/oauth-mcp-proxy@{{ .Tag }})
+    - [Examples](https://github.com/tuannvm/oauth-mcp-proxy/tree/{{ .Tag }}/examples)
+
+  footer: |
+    **Full Changelog**: https://github.com/tuannvm/oauth-mcp-proxy/compare/{{ .PreviousTag }}...{{ .Tag }}
+
+# Announce to pkg.go.dev (optional)
+announce:
+  skip: false

@@ -216,14 +216,16 @@ graph TD
 
 ---
 
-## Development Status
+## Status
+
+**Current Release:** v0.0.1 (Preview)
 
 | Phase | Status |
 |-------|--------|
 | 0-5 | ✅ **Complete** |
 | 6 | ⏳ Next: mcp-trino migration |
 
-**Release:** v0.1.0 ready after Phase 6 validation
+**Stable Release (v0.1.0):** After Phase 6 validation complete
 
 ---
 
