@@ -3,7 +3,6 @@ package oauth
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -73,7 +72,7 @@ func (h *OAuth2Handler) HandleMetadata(w http.ResponseWriter, r *http.Request) {
 	// Encode and send response
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(metadata); err != nil {
-		log.Printf("OAuth2: Error encoding metadata: %v", err)
+		h.logger.Error("OAuth2: Error encoding metadata: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
@@ -105,7 +104,7 @@ func (h *OAuth2Handler) HandleAuthorizationServerMetadata(w http.ResponseWriter,
 	// Encode and send response
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(metadata); err != nil {
-		log.Printf("OAuth2: Error encoding Authorization Server metadata: %v", err)
+		h.logger.Error("OAuth2: Error encoding Authorization Server metadata: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
@@ -144,7 +143,7 @@ func (h *OAuth2Handler) HandleProtectedResourceMetadata(w http.ResponseWriter, r
 	// Encode and send response
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(metadata); err != nil {
-		log.Printf("OAuth2: Error encoding Protected Resource metadata: %v", err)
+		h.logger.Error("OAuth2: Error encoding Protected Resource metadata: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
@@ -170,12 +169,12 @@ func (h *OAuth2Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	// Parse the registration request
 	var regRequest map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&regRequest); err != nil {
-		log.Printf("OAuth2: Failed to parse registration request: %v", err)
+		h.logger.Error("OAuth2: Failed to parse registration request: %v", err)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("OAuth2: Registration request: %+v", regRequest)
+	h.logger.Info("OAuth2: Registration request: %+v", regRequest)
 
 	// Accept any client registration from mcp-remote
 	// Return our pre-configured client_id
@@ -193,18 +192,18 @@ func (h *OAuth2Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	// Allow clients to register their own redirect URIs (needed for mcp-remote)
 	if redirectUris, ok := regRequest["redirect_uris"]; ok {
 		response["redirect_uris"] = redirectUris
-		log.Printf("OAuth2: Registration allowing client redirect URIs: %v", redirectUris)
+		h.logger.Info("OAuth2: Registration allowing client redirect URIs: %v", redirectUris)
 	} else if h.config.RedirectURIs != "" && !strings.Contains(h.config.RedirectURIs, ",") {
 		// Fallback to fixed redirect URI if no client URIs provided (single URI only)
 		trimmedURI := strings.TrimSpace(h.config.RedirectURIs)
 		response["redirect_uris"] = []string{trimmedURI}
-		log.Printf("OAuth2: Registration response using fixed redirect URI: %s", trimmedURI)
+		h.logger.Info("OAuth2: Registration response using fixed redirect URI: %s", trimmedURI)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("OAuth2: Failed to encode registration response: %v", err)
+		h.logger.Error("OAuth2: Failed to encode registration response: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }
@@ -229,7 +228,7 @@ func (h *OAuth2Handler) HandleOIDCDiscovery(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	log.Printf("OAuth2: OIDC discovery request from %s", r.RemoteAddr)
+	h.logger.Info("OAuth2: OIDC discovery request from %s", r.RemoteAddr)
 
 	// Return OIDC Discovery metadata with existing /oauth/ endpoints
 	metadata := map[string]interface{}{
@@ -257,15 +256,14 @@ func (h *OAuth2Handler) HandleOIDCDiscovery(w http.ResponseWriter, r *http.Reque
 		metadata["id_token_signing_alg_values_supported"] = []string{"HS256"}
 	case "okta", "google", "azure":
 		metadata["id_token_signing_alg_values_supported"] = []string{"RS256"}
-		// TODO: Implement /.well-known/jwks.json endpoint before advertising jwks_uri
-		// metadata["jwks_uri"] = fmt.Sprintf("%s/.well-known/jwks.json", h.config.MCPURL)
+		metadata["jwks_uri"] = fmt.Sprintf("%s/.well-known/jwks.json", h.config.MCPURL)
 	}
 
-	log.Printf("OAuth2: Returning OIDC discovery metadata for issuer: %s", h.config.MCPURL)
+	h.logger.Info("OAuth2: Returning OIDC discovery metadata for issuer: %s", h.config.MCPURL)
 
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(metadata); err != nil {
-		log.Printf("OAuth2: Error encoding OIDC discovery metadata: %v", err)
+		h.logger.Error("OAuth2: Error encoding OIDC discovery metadata: %v", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }

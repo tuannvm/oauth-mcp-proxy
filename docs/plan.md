@@ -62,7 +62,7 @@
 
 ```
 oauth-mcp-proxy/
-├── oauth.go              // Server, Config, NewServer(), EnableOAuth()
+├── oauth.go              // Server, Config, NewServer(), WithOAuth()
 ├── middleware.go         // OAuth middleware for MCP (uses Server)
 ├── token.go              // Token validation logic
 ├── user.go               // User type
@@ -118,7 +118,7 @@ func main() {
     mux := http.NewServeMux()
 
     // 2. Enable OAuth with ONE function call
-    oauth.EnableOAuth(mcpServer, mux, &oauth.Config{
+    oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
         Provider:     "okta",
         Issuer:       "https://company.okta.com",
         Audience:     "api://my-server",
@@ -128,12 +128,15 @@ func main() {
         RedirectURIs: "https://my-server.com/callback",
     })
 
+    // 3. Create MCP server with OAuth option
+    mcpServer := mcpserver.NewMCPServer("My Server", "1.0.0", oauthOption)
+
     // Done! OAuth is now enabled:
     // ✅ Middleware applied to mcpServer
     // ✅ HTTP handlers registered on mux
     // ✅ Context extraction configured
 
-    // 3. Continue with normal MCP setup
+    // 4. Continue with normal MCP setup
     mux.Handle("/mcp", mcpserver.NewStreamableHTTPServer(mcpServer))
     http.ListenAndServeTLS(":443", "cert.pem", "key.pem", mux)
 }
@@ -166,12 +169,14 @@ func main() {
     mux := http.NewServeMux()
 
     // Native mode - minimal config
-    oauth.EnableOAuth(mcpServer, mux, &oauth.Config{
+    oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
         Mode:     "native",  // Explicit (or auto-detected if omitted)
         Provider: "okta",
         Issuer:   "https://company.okta.com",
         Audience: "api://my-server",
     })
+
+    mcpServer := mcpserver.NewMCPServer("My Server", "1.0.0", oauthOption)
 
     // What happens:
     // ✅ Middleware validates Bearer tokens
@@ -196,7 +201,7 @@ func main() {
     mux := http.NewServeMux()
 
     // Proxy mode - full config
-    oauth.EnableOAuth(mcpServer, mux, &oauth.Config{
+    oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
         Mode:         "proxy",  // Explicit
         Provider:     "okta",
         Issuer:       "https://company.okta.com",
@@ -206,6 +211,8 @@ func main() {
         ServerURL:    "https://my-server.com",
         RedirectURIs: "https://my-server.com/callback",
     })
+
+    mcpServer := mcpserver.NewMCPServer("My Server", "1.0.0", oauthOption)
 
     // What happens:
     // ✅ Middleware validates Bearer tokens
@@ -222,7 +229,7 @@ func main() {
 ### Mode Auto-Detection + Validation
 
 ```go
-// Inside EnableOAuth():
+// Inside WithOAuth():
 if cfg.Mode == "" {
     if cfg.ClientID != "" {
         cfg.Mode = "proxy"
@@ -326,10 +333,10 @@ if c.Mode == "proxy" {
 
 ### Phase 3: Simple API Implementation
 
-**Goal:** Implement EnableOAuth() convenience function
+**Goal:** Implement WithOAuth() convenience function
 
 **Tasks:**
-- [ ] **Implement `oauth.EnableOAuth()` in ROOT package**
+- [ ] **Implement `oauth.WithOAuth()` in ROOT package**
   - [ ] Create Server internally (calls NewServer with validation)
   - [ ] Apply middleware to mcpServer (using existing middleware.go)
   - [ ] Register HTTP handlers on mux (using Server.RegisterHandlers)
@@ -338,7 +345,7 @@ if c.Mode == "proxy" {
 - [ ] Test both native and proxy modes work
 - [ ] Test error handling for invalid configs
 
-**Success:** EnableOAuth() works for both modes, clear error messages
+**Success:** WithOAuth() works for both modes, clear error messages
 
 **Note:** This wraps existing Server/middleware/handler code into one convenient call
 
@@ -401,7 +408,7 @@ if c.Mode == "proxy" {
 - OAuth 2.1 metadata endpoints
 
 ### Simple API
-- **`oauth.EnableOAuth()` - One function call integration (Option A)**
+- **`oauth.WithOAuth()` - One function call integration (composable option)**
 - Auto-detection of native vs proxy mode
 - Automatic middleware application
 - Automatic HTTP handler registration
@@ -455,7 +462,7 @@ See [plan-standalone.md](plan-standalone.md):
 ## Success Criteria
 
 ### Functional
-- Embedded mode works (EnableOAuth() function)
+- Embedded mode works (WithOAuth() function)
 - All 4 providers work (HMAC, Okta, Google, Azure)
 - Both modes work (native + proxy)
 - Token caching reduces load
@@ -479,7 +486,7 @@ See [plan-standalone.md](plan-standalone.md):
 
 ## Key Principles
 
-1. **Simplest API:** One function call (`EnableOAuth`) for MCP developers
+1. **Simplest API:** One function call (`WithOAuth`) for MCP developers
 2. **MCP-Only:** Library exclusively for MCP servers (no generic abstraction)
 3. **Embedded First:** v0.1.0 focuses on library mode only
 4. **Quality First:** Fix critical architecture (globals, logging, validation) in v0.1.0

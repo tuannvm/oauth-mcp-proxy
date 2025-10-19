@@ -57,7 +57,7 @@ func TestRedirectURIValidation(t *testing.T) {
 			config := &OAuth2Config{
 				RedirectURIs: tt.allowedRedirects,
 			}
-			handler := &OAuth2Handler{config: config}
+			handler := &OAuth2Handler{config: config, logger: &defaultLogger{}}
 
 			result := handler.isValidRedirectURI(tt.testURI)
 			if result != tt.expected {
@@ -68,7 +68,7 @@ func TestRedirectURIValidation(t *testing.T) {
 }
 
 func TestOAuthParameterValidation(t *testing.T) {
-	handler := &OAuth2Handler{}
+	handler := &OAuth2Handler{logger: &defaultLogger{}}
 
 	tests := []struct {
 		name        string
@@ -143,7 +143,7 @@ func TestOAuthParameterValidation(t *testing.T) {
 }
 
 func TestSecurityHeaders(t *testing.T) {
-	handler := &OAuth2Handler{}
+	handler := &OAuth2Handler{logger: &defaultLogger{}}
 	recorder := httptest.NewRecorder()
 
 	handler.addSecurityHeaders(recorder)
@@ -167,7 +167,7 @@ func TestHTTPSEnforcementInHandlers(t *testing.T) {
 	config := &OAuth2Config{
 		Mode: "proxy",
 	}
-	handler := &OAuth2Handler{config: config}
+	handler := &OAuth2Handler{config: config, logger: &defaultLogger{}}
 
 	endpoints := []struct {
 		name    string
@@ -238,7 +238,7 @@ func TestJWKSProxyMode(t *testing.T) {
 				Mode:     tt.mode,
 				Provider: tt.provider,
 			}
-			handler := &OAuth2Handler{config: config}
+			handler := &OAuth2Handler{config: config, logger: &defaultLogger{}}
 
 			recorder := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/.well-known/jwks.json", nil)

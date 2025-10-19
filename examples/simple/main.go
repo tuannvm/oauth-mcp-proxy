@@ -21,11 +21,14 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Line 1: Get OAuth server option (registers HTTP handlers)
+	// Optional: Provide custom logger for OAuth operations
+	// If not provided, uses default logger (log.Printf with level prefixes)
 	oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{
 		Provider:  "hmac",
 		Issuer:    "https://test.example.com",
 		Audience:  "api://simple-server",
 		JWTSecret: []byte("test-secret-key-must-be-32-bytes-long!"),
+		// Logger: &myCustomLogger{}, // Optional: Use your own logger
 	})
 	if err != nil {
 		log.Fatalf("WithOAuth failed: %v", err)

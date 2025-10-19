@@ -25,8 +25,12 @@ type Config struct {
 	// Security
 	JWTSecret []byte // For HMAC provider and state signing
 
-	// Optional
-	Logger Logger // Pluggable logger (defaults to standard logger)
+	// Optional - Logging
+	// Logger allows custom logging implementation. If nil, uses default logger
+	// that outputs to log.Printf with level prefixes ([INFO], [ERROR], etc.).
+	// Implement the Logger interface (Debug, Info, Warn, Error methods) to
+	// integrate with your application's logging system (e.g., zap, logrus).
+	Logger Logger
 }
 
 // Validate validates the configuration

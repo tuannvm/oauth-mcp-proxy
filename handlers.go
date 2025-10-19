@@ -242,14 +242,14 @@ func (h *OAuth2Handler) HandleJWKS(w http.ResponseWriter, r *http.Request) {
 	// Fetch JWKS from upstream provider
 	resp, err := client.Get(jwksURL)
 	if err != nil {
-		log.Printf("OAuth2: Failed to fetch JWKS from %s: %v", jwksURL, err)
+		h.logger.Error("OAuth2: Failed to fetch JWKS from %s: %v", jwksURL, err)
 		http.Error(w, "Failed to fetch JWKS", http.StatusBadGateway)
 		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("OAuth2: JWKS endpoint returned status %d", resp.StatusCode)
+		h.logger.Error("OAuth2: JWKS endpoint returned status %d", resp.StatusCode)
 		http.Error(w, "JWKS endpoint error", http.StatusBadGateway)
 		return
 	}
@@ -260,7 +260,7 @@ func (h *OAuth2Handler) HandleJWKS(w http.ResponseWriter, r *http.Request) {
 
 	// Copy response body
 	if _, err := io.Copy(w, resp.Body); err != nil {
-		log.Printf("OAuth2: Failed to proxy JWKS response: %v", err)
+		h.logger.Error("OAuth2: Failed to proxy JWKS response: %v", err)
 	}
 }
 
@@ -286,7 +286,7 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 	state := query.Get("state")
 	clientID := query.Get("client_id")
 
-	log.Printf("OAuth2: Authorization request - client_id: %s, redirect_uri: %s, code_challenge: %s",
+	h.logger.Info("OAuth2: Authorization request - client_id: %s, redirect_uri: %s, code_challenge: %s",
 		clientID, clientRedirectURI, truncateString(codeChallenge, 10))
 
 	// Determine redirect URI strategy based on configuration
@@ -296,39 +296,39 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 	if hasFixedRedirect {
 		// Fixed redirect mode: Use server's redirect URI to OAuth provider, proxy back to client
 		redirectURI = strings.TrimSpace(h.config.RedirectURIs)
-		log.Printf("OAuth2: Fixed redirect mode - using server URI: %s (will proxy to client: %s)", redirectURI, clientRedirectURI)
+		h.logger.Info("OAuth2: Fixed redirect mode - using server URI: %s (will proxy to client: %s)", redirectURI, clientRedirectURI)
 
 		// Validate client redirect URI format and security
 		if clientRedirectURI == "" {
-			log.Printf("SECURITY: Missing client redirect URI")
+			h.logger.Warn("SECURITY: Missing client redirect URI")
 			http.Error(w, "Missing redirect_uri", http.StatusBadRequest)
 			return
 		}
 
 		parsedURI, err := url.Parse(clientRedirectURI)
 		if err != nil {
-			log.Printf("SECURITY: Invalid client redirect URI format: %s", clientRedirectURI)
+			h.logger.Warn("SECURITY: Invalid client redirect URI format: %s", clientRedirectURI)
 			http.Error(w, "Invalid redirect_uri format", http.StatusBadRequest)
 			return
 		}
 
 		// Additional security checks for client redirect URI
 		if parsedURI.Scheme != "http" && parsedURI.Scheme != "https" {
-			log.Printf("SECURITY: Invalid redirect URI scheme: %s (must be http or https)", parsedURI.Scheme)
+			h.logger.Warn("SECURITY: Invalid redirect URI scheme: %s (must be http or https)", parsedURI.Scheme)
 			http.Error(w, "Invalid redirect_uri scheme", http.StatusBadRequest)
 			return
 		}
 
 		// Enforce HTTPS for non-localhost URIs
 		if parsedURI.Scheme == "http" && !isLocalhostURI(clientRedirectURI) {
-			log.Printf("SECURITY: HTTP redirect URI not allowed for non-localhost: %s", clientRedirectURI)
+			h.logger.Warn("SECURITY: HTTP redirect URI not allowed for non-localhost: %s", clientRedirectURI)
 			http.Error(w, "HTTPS required for non-localhost redirect_uri", http.StatusBadRequest)
 			return
 		}
 
 		// Prevent fragment in redirect URI (OAuth 2.0 spec)
 		if parsedURI.Fragment != "" {
-			log.Printf("SECURITY: Redirect URI contains fragment: %s", clientRedirectURI)
+			h.logger.Warn("SECURITY: Redirect URI contains fragment: %s", clientRedirectURI)
 			http.Error(w, "redirect_uri must not contain fragment", http.StatusBadRequest)
 			return
 		}
@@ -336,24 +336,24 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		// Security: For fixed redirect mode, only allow localhost or loopback addresses
 		// This prevents open redirect attacks while still supporting development tools
 		if !isLocalhostURI(clientRedirectURI) {
-			log.Printf("SECURITY: Fixed redirect mode only allows localhost URIs, rejecting: %s from %s", clientRedirectURI, r.RemoteAddr)
+			h.logger.Warn("SECURITY: Fixed redirect mode only allows localhost URIs, rejecting: %s from %s", clientRedirectURI, r.RemoteAddr)
 			http.Error(w, "Fixed redirect mode only allows localhost redirect URIs for security. Use allowlist mode for production.", http.StatusBadRequest)
 			return
 		}
 
-		log.Printf("OAuth2: Validated localhost redirect URI for proxy: %s", clientRedirectURI)
+		h.logger.Info("OAuth2: Validated localhost redirect URI for proxy: %s", clientRedirectURI)
 	} else if h.config.RedirectURIs != "" {
 		// Allowlist mode: Client's URI must be in allowlist, used directly (no proxy)
 		if !h.isValidRedirectURI(clientRedirectURI) {
-			log.Printf("SECURITY: Redirect URI not in allowlist: %s from %s", clientRedirectURI, r.RemoteAddr)
+			h.logger.Warn("SECURITY: Redirect URI not in allowlist: %s from %s", clientRedirectURI, r.RemoteAddr)
 			http.Error(w, "Invalid redirect_uri", http.StatusBadRequest)
 			return
 		}
 		redirectURI = clientRedirectURI
-		log.Printf("OAuth2: Allowlist mode - using client URI from allowlist: %s", redirectURI)
+		h.logger.Info("OAuth2: Allowlist mode - using client URI from allowlist: %s", redirectURI)
 	} else {
 		// No configuration: Reject for security
-		log.Printf("SECURITY: No redirect URIs configured, rejecting: %s from %s", clientRedirectURI, r.RemoteAddr)
+		h.logger.Warn("SECURITY: No redirect URIs configured, rejecting: %s from %s", clientRedirectURI, r.RemoteAddr)
 		http.Error(w, "Invalid redirect_uri", http.StatusBadRequest)
 		return
 	}
@@ -373,13 +373,13 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		// Sign state for integrity protection
 		signedState, err := h.signState(stateData)
 		if err != nil {
-			log.Printf("OAuth2: Failed to sign state: %v", err)
+			h.logger.Error("OAuth2: Failed to sign state: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
 
 		actualState = signedState
-		log.Printf("OAuth2: Signed state for proxy callback (length: %d)", len(signedState))
+		h.logger.Info("OAuth2: Signed state for proxy callback (length: %d)", len(signedState))
 	}
 
 	// Create authorization URL
@@ -389,7 +389,7 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 	if codeChallenge != "" {
 		parsedURL, err := url.Parse(authURL)
 		if err != nil {
-			log.Printf("OAuth2: Failed to parse auth URL: %v", err)
+			h.logger.Error("OAuth2: Failed to parse auth URL: %v", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -402,7 +402,7 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		authURL = parsedURL.String()
 	}
 
-	log.Printf("OAuth2: Redirecting to authorization URL: %s", authURL)
+	h.logger.Info("OAuth2: Redirecting to authorization URL: %s", authURL)
 	http.Redirect(w, r, authURL, http.StatusTemporaryRedirect)
 }
 
@@ -424,19 +424,19 @@ func (h *OAuth2Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	state := r.URL.Query().Get("state")
 	errorParam := r.URL.Query().Get("error")
 
-	log.Printf("OAuth2: Callback received - code: %s, state: %s, error: %s",
+	h.logger.Info("OAuth2: Callback received - code: %s, state: %s, error: %s",
 		truncateString(code, 10), state, errorParam)
 
 	// Handle OAuth errors
 	if errorParam != "" {
 		errorDesc := r.URL.Query().Get("error_description")
-		log.Printf("OAuth2: Authorization error: %s - %s", errorParam, errorDesc)
+		h.logger.Error("OAuth2: Authorization error: %s - %s", errorParam, errorDesc)
 		http.Error(w, fmt.Sprintf("Authorization failed: %s", errorDesc), http.StatusBadRequest)
 		return
 	}
 
 	if code == "" {
-		log.Printf("OAuth2: No authorization code received")
+		h.logger.Error("OAuth2: No authorization code received")
 		http.Error(w, "No authorization code received", http.StatusBadRequest)
 		return
 	}
@@ -446,7 +446,7 @@ func (h *OAuth2Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		// Verify and decode signed state parameter
 		stateData, err := h.verifyState(state)
 		if err != nil {
-			log.Printf("SECURITY: State verification failed: %v", err)
+			h.logger.Warn("SECURITY: State verification failed: %v", err)
 			http.Error(w, "Invalid state parameter", http.StatusBadRequest)
 			return
 		}
@@ -459,12 +459,12 @@ func (h *OAuth2Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 			// Re-validate redirect URI for defense in depth
 			// Even though state is HMAC-signed, validate the redirect URI is localhost
 			if !isLocalhostURI(originalRedirectURI) {
-				log.Printf("SECURITY: Callback redirect URI is not localhost (possible key compromise): %s", originalRedirectURI)
+				h.logger.Warn("SECURITY: Callback redirect URI is not localhost (possible key compromise): %s", originalRedirectURI)
 				http.Error(w, "Invalid redirect URI in state", http.StatusBadRequest)
 				return
 			}
 
-			log.Printf("OAuth2: State verified, proxying callback to localhost client: %s", originalRedirectURI)
+			h.logger.Info("OAuth2: State verified, proxying callback to localhost client: %s", originalRedirectURI)
 
 			// Build proxy callback URL
 			proxyURL := fmt.Sprintf("%s?code=%s&state=%s", originalRedirectURI, code, originalState)
@@ -472,7 +472,7 @@ func (h *OAuth2Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		log.Printf("OAuth2: State missing required fields")
+		h.logger.Error("OAuth2: State missing required fields")
 		http.Error(w, "Invalid state format", http.StatusBadRequest)
 		return
 	}
@@ -505,11 +505,11 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("OAuth2: Token exchange request from %s", r.RemoteAddr)
+	h.logger.Info("OAuth2: Token exchange request from %s", r.RemoteAddr)
 
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
-		log.Printf("OAuth2: Failed to parse form: %v", err)
+		h.logger.Error("OAuth2: Failed to parse form: %v", err)
 		http.Error(w, "Invalid request", http.StatusBadRequest)
 		return
 	}
@@ -521,18 +521,18 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	clientID := r.FormValue("client_id")
 	codeVerifier := r.FormValue("code_verifier")
 
-	log.Printf("OAuth2: Token request - grant_type: %s, client_id: %s, redirect_uri: %s, code: %s",
+	h.logger.Info("OAuth2: Token request - grant_type: %s, client_id: %s, redirect_uri: %s, code: %s",
 		grantType, clientID, clientRedirectURI, truncateString(code, 10))
 
 	// Validate parameters
 	if code == "" {
-		log.Printf("OAuth2: Missing authorization code")
+		h.logger.Error("OAuth2: Missing authorization code")
 		http.Error(w, "Missing authorization code", http.StatusBadRequest)
 		return
 	}
 
 	if grantType != "authorization_code" {
-		log.Printf("OAuth2: Unsupported grant type: %s", grantType)
+		h.logger.Error("OAuth2: Unsupported grant type: %s", grantType)
 		http.Error(w, "Unsupported grant type", http.StatusBadRequest)
 		return
 	}
@@ -541,7 +541,7 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	redirectURI := clientRedirectURI
 	if h.config.RedirectURIs != "" && !strings.Contains(h.config.RedirectURIs, ",") {
 		redirectURI = strings.TrimSpace(h.config.RedirectURIs)
-		log.Printf("OAuth2: Token exchange using fixed redirect URI: %s", redirectURI)
+		h.logger.Info("OAuth2: Token exchange using fixed redirect URI: %s", redirectURI)
 	}
 
 	h.oauth2Config.RedirectURL = redirectURI
@@ -565,12 +565,12 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	// Exchange code for tokens
 	token, err := h.oauth2Config.Exchange(ctx, code)
 	if err != nil {
-		log.Printf("OAuth2: Token exchange failed: %v", err)
+		h.logger.Error("OAuth2: Token exchange failed: %v", err)
 		http.Error(w, "Token exchange failed", http.StatusInternalServerError)
 		return
 	}
 
-	log.Printf("OAuth2: Token exchange successful")
+	h.logger.Info("OAuth2: Token exchange successful")
 
 	// Build response
 	response := map[string]interface{}{
@@ -601,14 +601,14 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("OAuth2: Failed to encode token response: %v", err)
+		h.logger.Error("OAuth2: Failed to encode token response: %v", err)
 	}
 }
 
 // showSuccessPage displays a success page after OAuth completion
 func (h *OAuth2Handler) showSuccessPage(w http.ResponseWriter, code, state string) {
 	// Log authorization details server-side (truncated for security)
-	log.Printf("OAuth2: Authorization successful - code: %s, state: %s",
+	h.logger.Info("OAuth2: Authorization successful - code: %s, state: %s",
 		truncateString(code, 10), truncateString(state, 10))
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
@@ -651,6 +651,7 @@ func (p *pkceTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 		// Read the existing body
 		defer func() {
 			if closeErr := req.Body.Close(); closeErr != nil {
+				// Note: pkceTransport doesn't have access to h.logger, using standard log
 				log.Printf("Warning: failed to close request body: %v", closeErr)
 			}
 		}()
@@ -771,7 +772,7 @@ func isLocalhostURI(uri string) bool {
 func (h *OAuth2Handler) isValidRedirectURI(uri string) bool {
 	if h.config.RedirectURIs == "" {
 		// No redirect URIs configured - reject all redirects for security
-		log.Printf("WARNING: No OAuth redirect URIs configured, rejecting redirect: %s", uri)
+		h.logger.Warn("WARNING: No OAuth redirect URIs configured, rejecting redirect: %s", uri)
 		return false
 	}
 

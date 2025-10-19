@@ -50,6 +50,7 @@ mux.Handle("/mcp", streamable)
 - Token validation with caching
 - User context in tool handlers
 - Production-ready security
+- Pluggable logging (optional custom logger)
 
 **Run:** `cd examples/simple && go run main.go`
 
@@ -124,3 +125,36 @@ oauth.WithOAuth(mux, &oauth.Config{
 ```
 
 All providers support both native mode (client handles OAuth) and proxy mode (server proxies OAuth flow).
+
+---
+
+## Custom Logging
+
+Control OAuth logging by providing your own logger:
+
+```go
+// Implement the Logger interface
+type MyLogger struct{}
+
+func (l *MyLogger) Debug(msg string, args ...interface{}) { /* custom implementation */ }
+func (l *MyLogger) Info(msg string, args ...interface{})  { /* custom implementation */ }
+func (l *MyLogger) Warn(msg string, args ...interface{})  { /* custom implementation */ }
+func (l *MyLogger) Error(msg string, args ...interface{}) { /* custom implementation */ }
+
+// Use it in your config
+oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
+    Provider: "hmac",
+    Audience: "api://my-server",
+    JWTSecret: []byte("secret"),
+    Logger: &MyLogger{}, // Your custom logger
+})
+```
+
+**Default behavior:** If no logger provided, uses `log.Printf` with level prefixes (`[INFO]`, `[ERROR]`, `[WARN]`, `[DEBUG]`).
+
+**What gets logged:**
+- Authorization requests and callbacks
+- Token validation (with token hash for security)
+- Security violations (invalid redirects, state verification failures)
+- OAuth flow errors
+- HTTP endpoint access

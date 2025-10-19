@@ -50,7 +50,7 @@ func TestGetAuthorizationServerMetadata(t *testing.T) {
 				Issuer:   tt.issuer,
 				MCPURL:   tt.mcpURL,
 			}
-			handler := &OAuth2Handler{config: config}
+			handler := &OAuth2Handler{config: config, logger: &defaultLogger{}}
 
 			metadata := handler.GetAuthorizationServerMetadata()
 
@@ -97,7 +97,7 @@ func TestHandleAuthorizationServerMetadata(t *testing.T) {
 		Issuer:   "https://dev.okta.com",
 		MCPURL:   "https://mcp.example.com",
 	}
-	handler := &OAuth2Handler{config: config}
+	handler := &OAuth2Handler{config: config, logger: &defaultLogger{}}
 
 	tests := []struct {
 		name           string
@@ -148,7 +148,7 @@ func TestHandleProtectedResourceMetadata(t *testing.T) {
 		Issuer: "https://dev.okta.com",
 		MCPURL: "https://mcp.example.com",
 	}
-	handler := &OAuth2Handler{config: config}
+	handler := &OAuth2Handler{config: config, logger: &defaultLogger{}}
 
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/.well-known/oauth-protected-resource", nil)
@@ -186,7 +186,10 @@ func TestHandleOIDCDiscovery(t *testing.T) {
 		Provider: "okta",
 		Audience: "https://api.example.com",
 	}
-	handler := &OAuth2Handler{config: config}
+	handler := &OAuth2Handler{
+		config: config,
+		logger: &defaultLogger{},
+	}
 
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/.well-known/openid_configuration", nil)

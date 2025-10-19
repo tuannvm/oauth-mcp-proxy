@@ -6,6 +6,12 @@
 *.dylib
 oauth-mcp-proxy
 
+# Built binaries (from examples and testing)
+/embedded
+/main
+/examples/simple/simple
+/examples/embedded/embedded
+
 # Test binary
 *.test
 

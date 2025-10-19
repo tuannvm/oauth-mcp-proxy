@@ -6,7 +6,7 @@ OAuth 2.1 authentication library for MCP servers
 
 🚧 **In Development** - Extracting from [mcp-trino](https://github.com/tuannvm/mcp-trino)
 
-**Current Phase:** Phase 2 - Package Structure
+**Current Phase:** Phase 4 - Complete (Ready for v0.1.0)
 
 ## Quick Links
 
@@ -47,6 +47,14 @@ This library requires 4 external dependencies:
 
 All dependencies are well-maintained, industry-standard Go libraries.
 
+## Features
+
+- **Pluggable Logging** - Provide your own logger or use the default
+- **4 Providers** - HMAC, Okta, Google, Azure AD
+- **OAuth 2.1** - Native + Proxy modes with PKCE support
+- **Instance-scoped** - No global state, supports multiple instances
+- **Production Ready** - Token caching, validation, security best practices
+
 ## Usage
 
 ### Embedded Mode (Library)
@@ -55,7 +63,7 @@ All dependencies are well-maintained, industry-standard Go libraries.
 import oauth "github.com/tuannvm/oauth-mcp-proxy"
 
 // One function call - OAuth enabled!
-oauth.EnableOAuth(mcpServer, mux, &oauth.Config{
+oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
     Provider: "okta",
     Issuer:   "https://company.okta.com",
     Audience: "api://my-server",
@@ -63,8 +71,32 @@ oauth.EnableOAuth(mcpServer, mux, &oauth.Config{
     ClientSecret: "secret",      // Optional: for proxy mode
 })
 
-// See docs/plan.md for native vs proxy mode examples
+mcpServer := mcpserver.NewMCPServer("My Server", "1.0.0", oauthOption)
+
+// All tools automatically OAuth-protected!
 ```
+
+### Custom Logger
+
+Provide your own logger to control OAuth logging:
+
+```go
+type MyLogger struct{}
+
+func (l *MyLogger) Debug(msg string, args ...interface{}) { /* custom */ }
+func (l *MyLogger) Info(msg string, args ...interface{})  { /* custom */ }
+func (l *MyLogger) Warn(msg string, args ...interface{})  { /* custom */ }
+func (l *MyLogger) Error(msg string, args ...interface{}) { /* custom */ }
+
+oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
+    Provider: "hmac",
+    Audience: "api://my-server",
+    JWTSecret: []byte("secret"),
+    Logger: &MyLogger{}, // Use custom logger
+})
+```
+
+If no logger provided, uses default (`log.Printf` with `[INFO]`, `[ERROR]`, etc. prefixes).
 
 ### Standalone Mode (v0.2.0+)
 
@@ -77,10 +109,10 @@ Deferred to v0.2.0 - See [plan-standalone.md](docs/plan-standalone.md) for detai
 | Phase 0 | ✅ Complete | Repository setup, copy code |
 | Phase 1 | ✅ Complete | Make it compile |
 | Phase 1.5 | ✅ Complete | Fix critical architecture (global state, logging, validation) |
-| Phase 2 | 🔄 Current | Package structure (provider/ only) |
-| Phase 3 | ⏳ Planned | Implement EnableOAuth() API |
-| Phase 4 | ⏳ Planned | OAuth-only tests (validate it works!) |
-| Phase 5 | ⏳ Planned | Documentation + examples |
+| Phase 2 | ✅ Complete | Package structure (provider/ only) |
+| Phase 3 | ✅ Complete | Implement WithOAuth() API |
+| Phase 4 | ✅ Complete | OAuth-only tests (validate it works!) |
+| Phase 5 | ⏳ Next | Documentation + examples |
 | Phase 6 | ⏳ Planned | mcp-trino migration |
 
 ## Development
