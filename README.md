@@ -1,145 +1,316 @@
 # oauth-mcp-proxy
 
-OAuth 2.1 authentication library for MCP servers
+**Add OAuth 2.1 authentication to your Go MCP server in 3 lines of code.**
 
-## Status
-
-🚧 **In Development** - Extracting from [mcp-trino](https://github.com/tuannvm/mcp-trino)
-
-**Current Phase:** Phase 4 - Complete (Ready for v0.1.0)
-
-## Quick Links
-
-- **[v0.1.0 Plan (Embedded)](docs/plan.md)** ← Embedded mode plan (current)
-- **[v0.2.0 Plan (Standalone)](docs/plan-standalone.md)** ← Proxy service plan (future)
-- **[Implementation Log](docs/implementation.md)** ← Progress tracking
-- [OAuth Architecture](docs/oauth.md) - Original OAuth design from mcp-trino
-- [Archived Plans](docs/archive/) - Historical planning documents
-
-## Overview
-
-`oauth-mcp-proxy` is a standalone OAuth 2.1 authentication library extracted from mcp-trino. It enables any Go-based MCP server to add OAuth authentication with minimal integration.
-
-### Features (v0.1.0)
-
-- **Embedded Mode:** Library for MCP servers
-- **4 Providers:** HMAC, Okta, Google, Azure AD
-- **OAuth 2.1:** Native + Proxy modes, PKCE support
-- **Production Ready:** Token caching, graceful shutdown
-
-**Note:** Standalone mode (proxy service) deferred to v0.2.0 - see [plan-standalone.md](docs/plan-standalone.md)
-
-## Installation
-
-```bash
-# Coming soon - library not yet published
-go get github.com/tuannvm/oauth-mcp-proxy
+```go
+oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{Provider: "okta", ...})
+mcpServer := server.NewMCPServer("My Server", "1.0.0", oauthOption)
+// Done! All tools OAuth-protected.
 ```
 
-## Dependencies
+---
 
-This library requires 4 external dependencies:
+## Why oauth-mcp-proxy?
 
-- **`github.com/mark3labs/mcp-go`** (v0.41.1) - MCP protocol and server
-- **`github.com/coreos/go-oidc/v3`** (v3.16.0) - OIDC/JWKS validation
-- **`github.com/golang-jwt/jwt/v5`** (v5.3.0) - JWT/HMAC validation
-- **`golang.org/x/oauth2`** (v0.32.0) - OAuth 2.0 flows
+**Without this library:** 100+ lines of OAuth boilerplate, token validation, PKCE, security concerns.
 
-All dependencies are well-maintained, industry-standard Go libraries.
+**With this library:** 3 lines. Production-ready OAuth with best practices built-in.
+
+---
 
 ## Features
 
-- **Pluggable Logging** - Provide your own logger or use the default
+- **3-Line Integration** - `WithOAuth()` does everything
 - **4 Providers** - HMAC, Okta, Google, Azure AD
-- **OAuth 2.1** - Native + Proxy modes with PKCE support
-- **Instance-scoped** - No global state, supports multiple instances
-- **Production Ready** - Token caching, validation, security best practices
+- **OAuth 2.1** - Native + Proxy modes, PKCE, token caching
+- **Pluggable Logging** - Integrate with zap, logrus, slog
+- **Production Ready** - Instance-scoped, no globals, security hardened
+- **MCP-Native** - Built specifically for `mcp-go` servers
 
-## Usage
+---
 
-### Embedded Mode (Library)
+## Quick Start (5 Minutes)
+
+### 1. Install
+
+```bash
+go get github.com/tuannvm/oauth-mcp-proxy
+```
+
+### 2. Add OAuth to Your MCP Server
 
 ```go
-import oauth "github.com/tuannvm/oauth-mcp-proxy"
+package main
 
-// One function call - OAuth enabled!
-oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
+import (
+    "net/http"
+    oauth "github.com/tuannvm/oauth-mcp-proxy"
+    mcpserver "github.com/mark3labs/mcp-go/server"
+)
+
+func main() {
+    mux := http.NewServeMux()
+
+    // Enable OAuth (auto-registers endpoints, applies middleware)
+    oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{
+        Provider:  "okta",                        // or "hmac", "google", "azure"
+        Issuer:    "https://yourcompany.okta.com",
+        Audience:  "api://your-mcp-server",
+        // Optional for proxy mode:
+        // ClientID: "...", ClientSecret: "...", ServerURL: "...", RedirectURIs: "..."
+    })
+    if err != nil {
+        panic(err)
+    }
+
+    // Create MCP server with OAuth
+    mcpServer := mcpserver.NewMCPServer("My Server", "1.0.0", oauthOption)
+
+    // Add your tools - automatically OAuth-protected!
+    mcpServer.AddTool(myTool, myToolHandler)
+
+    // Setup MCP endpoint
+    mux.Handle("/mcp", mcpserver.NewStreamableHTTPServer(
+        mcpServer,
+        mcpserver.WithHTTPContextFunc(oauth.CreateHTTPContextFunc()),
+    ))
+
+    http.ListenAndServeTLS(":443", "cert.pem", "key.pem", mux)
+}
+```
+
+### 3. Access Authenticated User in Tools
+
+```go
+func myToolHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+    user, ok := oauth.GetUserFromContext(ctx)
+    if !ok {
+        return nil, fmt.Errorf("not authenticated")
+    }
+
+    // user.Subject, user.Email, user.Username available
+    return mcp.NewToolResultText(fmt.Sprintf("Hello, %s!", user.Username)), nil
+}
+```
+
+**That's it!** Your MCP server now requires OAuth authentication.
+
+---
+
+## Configuration Options
+
+```go
+type Config struct {
+    // Required
+    Provider string // "hmac", "okta", "google", "azure"
+    Audience string // Your API audience (e.g., "api://my-server")
+
+    // Provider-specific
+    Issuer    string // OIDC issuer URL (Okta/Google/Azure)
+    JWTSecret []byte // Secret key (HMAC provider only)
+
+    // Optional - OAuth Mode
+    Mode string // "native" (default) or "proxy" - auto-detected
+
+    // Optional - Proxy Mode (client can't do OAuth)
+    ClientID     string // OAuth client ID
+    ClientSecret string // OAuth client secret
+    ServerURL    string // Your server's public URL
+    RedirectURIs string // Allowed redirect URIs
+
+    // Optional - Custom Logging
+    Logger Logger // Your logger (zap, logrus, etc.) - uses default if nil
+}
+```
+
+### OAuth Modes
+
+**Native Mode** (recommended): Client handles OAuth directly with provider
+- Use when: Claude Desktop, browser-based clients
+- Config: Just Provider, Issuer, Audience
+
+**Proxy Mode**: Server proxies OAuth flow for client
+- Use when: Simple CLI tools, legacy clients
+- Config: All fields including ClientID, ServerURL, RedirectURIs
+
+Mode is auto-detected based on whether `ClientID` is provided.
+
+---
+
+## Provider Setup
+
+Choose your OAuth provider:
+
+### HMAC (Shared Secret)
+
+**Use when:** Testing, simple deployments, service-to-service
+
+```go
+oauth.WithOAuth(mux, &oauth.Config{
+    Provider:  "hmac",
+    Audience:  "api://my-server",
+    JWTSecret: []byte("your-32-byte-secret-key-here"),
+})
+```
+
+Generate tokens with `jwt.NewWithClaims()`. See [HMAC Guide](docs/providers/HMAC.md).
+
+### Okta
+
+**Use when:** Enterprise SSO, user management
+
+```go
+oauth.WithOAuth(mux, &oauth.Config{
     Provider: "okta",
-    Issuer:   "https://company.okta.com",
-    Audience: "api://my-server",
-    ClientID: "client-id",      // Optional: triggers proxy mode
-    ClientSecret: "secret",      // Optional: for proxy mode
+    Issuer:   "https://yourcompany.okta.com",
+    Audience: "api://your-server",
 })
-
-mcpServer := mcpserver.NewMCPServer("My Server", "1.0.0", oauthOption)
-
-// All tools automatically OAuth-protected!
 ```
 
-### Custom Logger
+Setup: [Okta Guide](docs/providers/OKTA.md)
 
-Provide your own logger to control OAuth logging:
+### Google
+
+**Use when:** Google Workspace integration
 
 ```go
-type MyLogger struct{}
-
-func (l *MyLogger) Debug(msg string, args ...interface{}) { /* custom */ }
-func (l *MyLogger) Info(msg string, args ...interface{})  { /* custom */ }
-func (l *MyLogger) Warn(msg string, args ...interface{})  { /* custom */ }
-func (l *MyLogger) Error(msg string, args ...interface{}) { /* custom */ }
-
-oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
-    Provider: "hmac",
-    Audience: "api://my-server",
-    JWTSecret: []byte("secret"),
-    Logger: &MyLogger{}, // Use custom logger
+oauth.WithOAuth(mux, &oauth.Config{
+    Provider: "google",
+    Issuer:   "https://accounts.google.com",
+    Audience: "your-client-id.apps.googleusercontent.com",
 })
 ```
 
-If no logger provided, uses default (`log.Printf` with `[INFO]`, `[ERROR]`, etc. prefixes).
+Setup: [Google Guide](docs/providers/GOOGLE.md)
 
-### Standalone Mode (v0.2.0+)
+### Azure AD
 
-Deferred to v0.2.0 - See [plan-standalone.md](docs/plan-standalone.md) for details
+**Use when:** Microsoft 365 integration
+
+```go
+oauth.WithOAuth(mux, &oauth.Config{
+    Provider: "azure",
+    Issuer:   "https://login.microsoftonline.com/{tenant}/v2.0",
+    Audience: "api://your-app-id",
+})
+```
+
+Setup: [Azure AD Guide](docs/providers/AZURE.md)
+
+---
+
+## Custom Logger
+
+Integrate with your logging system:
+
+```go
+// Implement Logger interface
+type MyLogger struct{ logger *zap.Logger }
+
+func (l *MyLogger) Debug(msg string, args ...interface{}) { l.logger.Sugar().Debugf(msg, args...) }
+func (l *MyLogger) Info(msg string, args ...interface{})  { l.logger.Sugar().Infof(msg, args...) }
+func (l *MyLogger) Warn(msg string, args ...interface{})  { l.logger.Sugar().Warnf(msg, args...) }
+func (l *MyLogger) Error(msg string, args ...interface{}) { l.logger.Sugar().Errorf(msg, args...) }
+
+// Use in config
+oauth.WithOAuth(mux, &oauth.Config{
+    Provider: "okta",
+    Audience: "api://my-server",
+    Logger:   &MyLogger{logger: zapLogger},
+})
+```
+
+Default logger uses `log.Printf` with level prefixes.
+
+---
+
+## Security Best Practices
+
+🔒 **See [SECURITY.md](docs/SECURITY.md) for complete guide**
+
+**Quick checklist:**
+- ✅ Use HTTPS in production
+- ✅ Never commit secrets (use environment variables)
+- ✅ Validate audience matches your server
+- ✅ Use strong JWTSecret (32+ bytes) for HMAC
+- ✅ Enable PKCE for public clients (auto-enabled)
+- ✅ Regularly rotate secrets
+
+---
+
+## Troubleshooting
+
+### "Authentication required: missing OAuth token"
+- Check: Is `Authorization: Bearer <token>` header present?
+- Check: Did you call `WithHTTPContextFunc(oauth.CreateHTTPContextFunc())`?
+
+### "Authentication failed: invalid token"
+- Check: Token issuer matches config Issuer
+- Check: Token audience matches config Audience
+- Check: Token not expired
+- Check: For HMAC, secret matches
+
+### "Invalid redirect URI"
+- Native mode: Client's redirect must be localhost for security
+- Proxy mode: Redirect must be in RedirectURIs allowlist
+
+### Token caching not working
+- Tokens cached 5 minutes by default
+- Cache is instance-scoped (per Server)
+
+---
+
+## Examples
+
+- **[Simple Example](examples/simple/)** - Production-ready 3-line integration
+- **[Advanced Example](examples/embedded/)** - Lower-level API for customization
+
+---
+
+## Migration from mcp-trino
+
+Using `mcp-trino`'s OAuth? See [MIGRATION.md](docs/MIGRATION.md) for upgrade guide.
+
+---
 
 ## Development Status
 
 | Phase | Status | Description |
 |-------|--------|-------------|
-| Phase 0 | ✅ Complete | Repository setup, copy code |
-| Phase 1 | ✅ Complete | Make it compile |
-| Phase 1.5 | ✅ Complete | Fix critical architecture (global state, logging, validation) |
-| Phase 2 | ✅ Complete | Package structure (provider/ only) |
-| Phase 3 | ✅ Complete | Implement WithOAuth() API |
-| Phase 4 | ✅ Complete | OAuth-only tests (validate it works!) |
-| Phase 5 | ⏳ Next | Documentation + examples |
-| Phase 6 | ⏳ Planned | mcp-trino migration |
+| Phase 0-4 | ✅ Complete | Core library + tests |
+| **Phase 5** | 🔄 Current | Documentation + examples |
+| Phase 6 | ⏳ Next | mcp-trino migration validation |
 
-## Development
+**Status:** Ready for v0.1.0 after Phase 5 completion.
 
-```bash
-# Run tests
-make test
+---
 
-# Run tests with coverage
-make test-coverage
+## Dependencies
 
-# Run linters
-make lint
+4 well-maintained dependencies:
+- **mcp-go** (v0.41.1) - MCP protocol
+- **go-oidc** (v3.16.0) - OIDC validation
+- **jwt** (v5.3.0) - JWT validation
+- **oauth2** (v0.32.0) - OAuth flows
 
-# Format code
-make fmt
-```
+---
 
 ## Contributing
 
-Not accepting contributions yet - extraction in progress.
+Not accepting contributions during extraction phase. After v0.1.0 release, contributions welcome!
+
+---
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details
+MIT License - See [LICENSE](LICENSE)
 
-## Related Projects
+---
 
-- [mcp-trino](https://github.com/tuannvm/mcp-trino) - Source of OAuth implementation
-- [mcp-go](https://github.com/mark3labs/mcp-go) - MCP protocol library
+## Links
+
+- **[Implementation Plan](docs/plan.md)** - v0.1.0 roadmap
+- **[Provider Guides](docs/providers/)** - Setup instructions
+- **[Security Guide](docs/SECURITY.md)** - Best practices
+- **[Migration Guide](docs/MIGRATION.md)** - From mcp-trino
+- **[Examples](examples/)** - Working code samples

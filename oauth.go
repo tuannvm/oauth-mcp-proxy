@@ -8,7 +8,12 @@ import (
 	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
-// Server represents an OAuth authentication server instance
+// Server represents an OAuth authentication server instance.
+// Each Server maintains its own token cache and validator, allowing
+// multiple independent OAuth configurations in the same application.
+//
+// Create using NewServer(). Access middleware via Middleware() and
+// register HTTP endpoints via RegisterHandlers().
 type Server struct {
 	config    *Config
 	validator provider.TokenValidator
@@ -17,7 +22,20 @@ type Server struct {
 	logger    Logger
 }
 
-// NewServer creates a new OAuth server with the given configuration
+// NewServer creates a new OAuth server with the given configuration.
+// Validates configuration, initializes provider-specific token validator,
+// and creates instance-scoped token cache.
+//
+// Example:
+//
+//	server, err := oauth.NewServer(&oauth.Config{
+//	    Provider: "okta",
+//	    Issuer:   "https://company.okta.com",
+//	    Audience: "api://my-server",
+//	})
+//
+// Most users should use WithOAuth() instead, which wraps NewServer()
+// and automatically registers handlers and middleware.
 func NewServer(cfg *Config) (*Server, error) {
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
@@ -53,7 +71,18 @@ func NewServer(cfg *Config) (*Server, error) {
 	}, nil
 }
 
-// RegisterHandlers registers OAuth HTTP endpoints on the provided mux
+// RegisterHandlers registers OAuth HTTP endpoints on the provided mux.
+// Endpoints registered:
+//   - /.well-known/oauth-authorization-server - OAuth 2.0 metadata (RFC 8414)
+//   - /.well-known/oauth-protected-resource - Resource metadata
+//   - /.well-known/jwks.json - JWKS keys
+//   - /.well-known/openid-configuration - OIDC discovery
+//   - /oauth/authorize - Authorization endpoint (proxy mode)
+//   - /oauth/callback - Callback handler (proxy mode)
+//   - /oauth/token - Token exchange (proxy mode)
+//
+// Note: WithOAuth() calls this automatically. Only call directly if using
+// NewServer() for advanced use cases.
 func (s *Server) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/.well-known/oauth-authorization-server", s.handler.HandleAuthorizationServerMetadata)
 	mux.HandleFunc("/.well-known/oauth-protected-resource", s.handler.HandleProtectedResourceMetadata)

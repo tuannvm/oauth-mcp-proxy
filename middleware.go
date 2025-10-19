@@ -93,7 +93,20 @@ func (tc *TokenCache) setCachedToken(tokenHash string, user *User, expiresAt tim
 	}
 }
 
-// Middleware returns an authentication middleware for MCP tools
+// Middleware returns an authentication middleware for MCP tools.
+// Validates OAuth tokens, caches results, and adds authenticated user to context.
+//
+// The middleware:
+//   1. Extracts OAuth token from context (set by CreateHTTPContextFunc)
+//   2. Checks token cache (5-minute TTL)
+//   3. Validates token using configured provider if not cached
+//   4. Adds User to context via userContextKey
+//   5. Passes request to tool handler with authenticated context
+//
+// Use GetUserFromContext(ctx) in tool handlers to access authenticated user.
+//
+// Note: WithOAuth() returns this middleware wrapped as mcpserver.ServerOption.
+// Only call directly if using NewServer() for advanced use cases.
 func (s *Server) Middleware() func(server.ToolHandlerFunc) server.ToolHandlerFunc {
 	return func(next server.ToolHandlerFunc) server.ToolHandlerFunc {
 		return func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -139,8 +152,16 @@ func (s *Server) Middleware() func(server.ToolHandlerFunc) server.ToolHandlerFun
 	}
 }
 
-// OAuthMiddleware creates an authentication middleware (legacy function for compatibility)
-// Deprecated: Use NewServer() and Server.Middleware() instead
+// OAuthMiddleware creates an authentication middleware (legacy function for compatibility).
+//
+// Deprecated: Use WithOAuth() for new code. This function creates a temporary
+// Server instance for each call and doesn't support custom logging. Kept for
+// backward compatibility only.
+//
+// Modern usage:
+//
+//	oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{...})
+//	mcpServer := server.NewMCPServer("name", "1.0.0", oauthOption)
 func OAuthMiddleware(validator provider.TokenValidator, enabled bool) func(server.ToolHandlerFunc) server.ToolHandlerFunc {
 	// Create a temporary server for legacy compatibility
 	cache := &TokenCache{cache: make(map[string]*CachedToken)}
@@ -162,13 +183,37 @@ func OAuthMiddleware(validator provider.TokenValidator, enabled bool) func(serve
 
 // validateJWT is deprecated - use provider-based validation instead
 
-// GetUserFromContext extracts user from context
+// GetUserFromContext extracts the authenticated user from context.
+// Returns the User and true if authentication succeeded, or nil and false otherwise.
+//
+// Example:
+//
+//	func toolHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+//	    user, ok := oauth.GetUserFromContext(ctx)
+//	    if !ok {
+//	        return nil, fmt.Errorf("authentication required")
+//	    }
+//	    // Use user.Subject, user.Email, user.Username
+//	    return mcp.NewToolResultText("Hello, " + user.Username), nil
+//	}
 func GetUserFromContext(ctx context.Context) (*User, bool) {
 	user, ok := ctx.Value(userContextKey).(*User)
 	return user, ok
 }
 
-// CreateHTTPContextFunc creates the HTTP context function for token extraction
+// CreateHTTPContextFunc creates an HTTP context function that extracts OAuth tokens
+// from Authorization headers. Use with mcpserver.WithHTTPContextFunc() to enable
+// token extraction from HTTP requests.
+//
+// Example:
+//
+//	streamableServer := mcpserver.NewStreamableHTTPServer(
+//	    mcpServer,
+//	    mcpserver.WithHTTPContextFunc(oauth.CreateHTTPContextFunc()),
+//	)
+//
+// This extracts "Bearer <token>" from Authorization header and adds it to context
+// via WithOAuthToken(). The OAuth middleware then retrieves it via GetOAuthToken().
 func CreateHTTPContextFunc() func(context.Context, *http.Request) context.Context {
 	return func(ctx context.Context, r *http.Request) context.Context {
 		// Extract Bearer token from Authorization header
@@ -190,9 +235,13 @@ func CreateHTTPContextFunc() func(context.Context, *http.Request) context.Contex
 	}
 }
 
-// CreateRequestAuthHook creates a server-level authentication hook for all MCP requests
-// Note: This function is deprecated and should not be used as it cannot propagate context.
-// Use OAuthMiddleware at the tool level instead, which properly handles context propagation.
+// CreateRequestAuthHook creates a server-level authentication hook for all MCP requests.
+//
+// Deprecated: This function cannot propagate context changes due to its signature limitation.
+// Use WithOAuth() instead, which properly handles context propagation via tool-level middleware.
+//
+// This function is a no-op that always returns nil. Authentication happens at the tool level
+// via Server.Middleware() which can properly propagate the authenticated user in context.
 func CreateRequestAuthHook(validator provider.TokenValidator) func(context.Context, interface{}, interface{}) error {
 	return func(ctx context.Context, id interface{}, message interface{}) error {
 		// This hook cannot propagate context changes due to its signature limitation.

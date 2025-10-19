@@ -89,8 +89,16 @@ func (c *Config) Validate() error {
 	return nil
 }
 
-// SetupOAuth initializes OAuth validation and sets up OAuth configuration
-// Deprecated: Use NewServer() instead
+// SetupOAuth initializes OAuth validation and sets up OAuth configuration.
+//
+// Deprecated: Use WithOAuth() for new code, which provides complete OAuth setup
+// including middleware and HTTP handlers. This function only creates a validator
+// and requires manual wiring.
+//
+// Modern usage:
+//
+//	oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{...})
+//	mcpServer := server.NewMCPServer("name", "1.0.0", oauthOption)
 func SetupOAuth(cfg *Config) (provider.TokenValidator, error) {
 	logger := cfg.Logger
 	if logger == nil {
