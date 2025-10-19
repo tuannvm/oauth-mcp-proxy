@@ -16,7 +16,6 @@ mcpServer := server.NewMCPServer("My Server", "1.0.0", oauthOption)
 [![Go Reference](https://pkg.go.dev/badge/github.com/tuannvm/oauth-mcp-proxy.svg)](https://pkg.go.dev/github.com/tuannvm/oauth-mcp-proxy)
 [![GitHub Release](https://img.shields.io/github/v/release/tuannvm/oauth-mcp-proxy?sort=semver)](https://github.com/tuannvm/oauth-mcp-proxy/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![OpenSSF Best Practices](https://www.bestpractices.coreinfrastructure.org/projects/0000/badge)](https://www.bestpractices.coreinfrastructure.org/projects/0000)
 
 ---
 
