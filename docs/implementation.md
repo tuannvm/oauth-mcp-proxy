@@ -412,22 +412,124 @@ type TokenValidator interface {
 
 ## Phase 3: Simple API Implementation
 
-**Status:** ⏳ Not Started
+**Status:** ✅ Completed
 
-### Tasks
+**Started:** 2025-10-19
+**Completed:** 2025-10-19
 
-- [ ] Implement oauth.EnableOAuth() in ROOT package
-  - [ ] Call NewServer() with validation
-  - [ ] Apply middleware to mcpServer
-  - [ ] Register handlers on mux
-  - [ ] Set up HTTPContextFunc
-  - [ ] Auto-detect mode with validation
-- [ ] Test both native and proxy modes
-- [ ] Test error handling
+### Tasks Completed
+
+- [x] Implement `oauth.WithOAuth()` in ROOT package
+  - [x] Call NewServer() with validation
+  - [x] Apply middleware via server option
+  - [x] Register handlers on mux
+  - [x] Return mcpserver.ServerOption
+- [x] HTTPContextFunc already exists (CreateHTTPContextFunc)
+- [x] Test both native and proxy modes
+- [x] Test error handling
+- [x] Create simple example
+- [x] Update documentation
 
 ### Implementation Notes
 
-*TBD*
+**API Design Decision:**
+
+Following Gemini 2.5 Pro's recommendation, implemented **composable API** instead of monolithic `EnableOAuth()`.
+
+**Why:**
+- mcp-go v0.41.1 requires middleware at server **construction** (not after)
+- `server.NewMCPServer()` accepts options, not middleware methods
+- Composable API fits mcp-go patterns better
+
+**Implemented API:**
+
+```go
+// oauth.go
+func WithOAuth(mux *http.ServeMux, cfg *Config) (mcpserver.ServerOption, error)
+```
+
+**Usage Pattern (2 lines):**
+```go
+mux := http.NewServeMux()
+
+// Line 1: Get OAuth option
+oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
+    Provider:  "hmac",
+    Audience:  "api://test",
+    JWTSecret: []byte("secret"),
+})
+
+// Line 2: Create server with OAuth
+mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
+
+// Done! All tools are OAuth-protected
+```
+
+**What WithOAuth() Does:**
+1. Creates OAuth Server internally (`NewServer(cfg)`)
+2. Validates config (via `cfg.Validate()`)
+3. Registers HTTP handlers on mux
+4. Returns `server.WithToolHandlerMiddleware(middleware)`
+
+**Key Features:**
+- ✅ Server-wide middleware (all tools protected)
+- ✅ Composable with other `server.ServerOption`
+- ✅ Auto-detects mode (native vs proxy)
+- ✅ Validates config early (fail fast)
+- ✅ Compatible with mcp-go v0.41.1
+
+**Helper Function:**
+```go
+func CreateHTTPContextFunc() func(context.Context, *http.Request) context.Context
+```
+- Extracts Bearer token from HTTP headers
+- Adds to context via `WithOAuthToken()`
+- Use with `mcpserver.WithHTTPContextFunc()`
+
+**Files Created:**
+- `oauth.go` - Added `WithOAuth()` function
+- `examples/simple/main.go` - NEW: Simple API example
+- `phase3_test.go` - NEW: WithOAuth() tests
+- `examples/README.md` - Updated with comparison
+
+**Files Modified:**
+- `examples/embedded/main.go` - Moved from examples/embedded.go
+- `examples/README.md` - Added Simple vs Embedded comparison
+
+**Test Coverage:**
+- `TestWithOAuth` - 4 subtests
+  - BasicUsage_NativeMode
+  - ProxyMode
+  - InvalidConfig
+  - EndToEndWithHTTPContextFunc
+- `TestPhase3API` - 2 subtests
+  - TwoLineSetup
+  - ComposableWithOtherOptions
+
+**Build & Test Status:**
+- ✅ `go build ./...` - Success
+- ✅ `make test` - All tests passing
+- ✅ `examples/simple/main.go` - Compiles
+- ✅ `examples/embedded/main.go` - Compiles
+
+**Comparison to Original Plan:**
+
+Original plan called for `EnableOAuth(mcpServer, mux, cfg)` but this was impossible because:
+- mcp-go v0.41.1 requires middleware at server creation
+- Can't modify server after construction
+
+**New API is better:**
+- More composable (functional options pattern)
+- Idiomatic for mcp-go users
+- Same simplicity (2 lines vs 1 line)
+- More flexible (can combine with other options)
+
+**Key Achievements:**
+- ✅ 2-line OAuth setup (goal achieved)
+- ✅ Server-wide protection (all tools secured)
+- ✅ mcp-go v0.41.1 compatible
+- ✅ Composable design
+- ✅ Both examples working
 
 ---
 

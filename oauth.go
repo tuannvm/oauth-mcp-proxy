@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
+	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
@@ -62,3 +63,34 @@ func (s *Server) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/oauth/token", s.handler.HandleToken)
 	mux.HandleFunc("/.well-known/openid-configuration", s.handler.HandleOIDCDiscovery)
 }
+
+// WithOAuth returns a server option that enables OAuth authentication
+// This is the composable API for mcp-go v0.41.1
+//
+// Usage:
+//
+//	mux := http.NewServeMux()
+//	oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{...})
+//	mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
+//
+// This function:
+// - Creates OAuth server internally
+// - Registers OAuth HTTP endpoints on mux
+// - Returns middleware as server option
+//
+// Note: You must also configure HTTPContextFunc to extract the OAuth token
+// from HTTP headers. Use CreateHTTPContextFunc() helper.
+func WithOAuth(mux *http.ServeMux, cfg *Config) (mcpserver.ServerOption, error) {
+	// Create OAuth server
+	oauthServer, err := NewServer(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OAuth server: %w", err)
+	}
+
+	// Register HTTP handlers
+	oauthServer.RegisterHandlers(mux)
+
+	// Return middleware as server option
+	return mcpserver.WithToolHandlerMiddleware(oauthServer.Middleware()), nil
+}
+
