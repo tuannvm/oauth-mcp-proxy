@@ -11,12 +11,14 @@ import (
 	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
-// TestPhase2Integration validates Phase 2 implementation
+// TestIntegration validates core architecture and integration.
+// Tests:
 // - provider/ package isolation
 // - Config conversion (root → provider)
 // - Server struct with instance-scoped state
-// - Middleware integration
-func TestPhase2Integration(t *testing.T) {
+// - Middleware integration with MCP server
+// - Backward compatibility (User type re-export)
+func TestIntegration(t *testing.T) {
 	t.Run("ProviderPackageIsolation", func(t *testing.T) {
 		// Test that provider package has its own Config/User/Logger types
 		// and doesn't import root package
@@ -247,8 +249,9 @@ func TestPhase2Integration(t *testing.T) {
 	})
 }
 
-// TestPhase2Validators validates provider package validators
-func TestPhase2Validators(t *testing.T) {
+// TestValidatorIntegration validates provider package validator integration.
+// Tests HMAC and OIDC validators work correctly with the provider package.
+func TestValidatorIntegration(t *testing.T) {
 	t.Run("HMACValidator", func(t *testing.T) {
 		cfg := &provider.Config{
 			Provider:  "hmac",

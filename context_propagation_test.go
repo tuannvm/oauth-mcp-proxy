@@ -159,8 +159,9 @@ func TestContextPropagation(t *testing.T) {
 	})
 }
 
-// TestPhase2ContextIntegration validates end-to-end context flow
-func TestPhase2ContextIntegration(t *testing.T) {
+// TestContextIntegration validates end-to-end context flow through
+// HTTP → MCP → Middleware → Validator chain.
+func TestContextIntegration(t *testing.T) {
 	t.Run("EndToEndContextFlow", func(t *testing.T) {
 		// This test validates the complete context flow:
 		// Test Context → Middleware → ValidateToken → Provider

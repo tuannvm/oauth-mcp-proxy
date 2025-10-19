@@ -13,7 +13,9 @@ import (
 	mcpserver "github.com/mark3labs/mcp-go/server"
 )
 
-// TestWithOAuth validates Phase 3 WithOAuth() API
+// TestWithOAuth validates the WithOAuth() convenience API.
+// Tests simple integration, both native and proxy modes, error handling,
+// and composability with other server options.
 func TestWithOAuth(t *testing.T) {
 	t.Run("BasicUsage_NativeMode", func(t *testing.T) {
 		// Test the simplest usage of WithOAuth
@@ -190,8 +192,9 @@ func TestWithOAuth(t *testing.T) {
 	})
 }
 
-// TestPhase3API validates the complete Phase 3 API
-func TestPhase3API(t *testing.T) {
+// TestWithOAuthAPI validates the WithOAuth() API design goals.
+// Tests API simplicity, composability, and end-to-end integration.
+func TestWithOAuthAPI(t *testing.T) {
 	t.Run("TwoLineSetup", func(t *testing.T) {
 		// Demonstrate the simplest possible setup
 
