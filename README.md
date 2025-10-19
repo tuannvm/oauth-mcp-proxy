@@ -1,297 +1,242 @@
 # oauth-mcp-proxy
 
-**Add OAuth 2.1 authentication to your Go MCP server in 3 lines of code.**
+**OAuth 2.1 authentication library for Go MCP servers.**
+
+Minimal server-side integration (3 lines of Go code) + deployment configuration.
 
 ```go
 oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{Provider: "okta", ...})
 mcpServer := server.NewMCPServer("My Server", "1.0.0", oauthOption)
-// Done! All tools OAuth-protected.
+// Server-side OAuth complete. Also need: provider setup + deployment config + client config.
+```
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/tuannvm/oauth-mcp-proxy.svg)](https://pkg.go.dev/github.com/tuannvm/oauth-mcp-proxy)
+
+---
+
+## Complete Setup Overview
+
+```mermaid
+graph TD
+    subgraph "1. OAuth Provider Setup"
+        A[Create OAuth App<br/>Okta/Google/Azure]
+        A --> B[Get ClientID<br/>Get ClientSecret]
+    end
+
+    subgraph "2. Server Integration"
+        C[Add 3 Lines Go Code<br/>WithOAuth]
+        D[Configure Deployment<br/>Helm/env vars]
+        C --> D
+    end
+
+    subgraph "3. Client Configuration"
+        E[Client discovers<br/>via .well-known endpoints]
+        F[Or manual config<br/>claude_desktop_config.json]
+        E -.->|Auto| G[Client Ready]
+        F -.->|Manual| G
+    end
+
+    B --> C
+    D --> E
+    D --> F
+
+    style A fill:#ffe5e5
+    style C fill:#e1f5ff
+    style G fill:#d4edda
+```
+
+**What you need:**
+1. OAuth provider configured (one-time setup)
+2. Server code updated (3 lines)
+3. Deployment configured (environment variables / Helm)
+4. Client configured (auto-discovery or manual)
+
+---
+
+## Architecture
+
+```mermaid
+graph LR
+    Client[MCP Client] -->|HTTP + Bearer Token| Server[Your MCP Server]
+    Server -->|1. Extract Token| OAuth[oauth-mcp-proxy]
+    OAuth -->|2. Validate| Provider[OAuth Provider<br/>Okta/Google/Azure]
+    OAuth -->|3. Add User to Context| Tools[Your MCP Tools]
+
+    style OAuth fill:#e1f5ff
+    style Tools fill:#d4edda
+```
+
+**What oauth-mcp-proxy does:**
+1. Extracts tokens from HTTP requests
+2. Validates against OAuth provider (with caching)
+3. Adds authenticated user to context
+4. Protects all your tools automatically
+
+---
+
+## Authentication Flow
+
+```mermaid
+sequenceDiagram
+    participant C as MCP Client
+    participant S as Your Server
+    participant O as oauth-mcp-proxy
+    participant P as OAuth Provider
+
+    C->>S: POST /mcp<br/>Header: Bearer token
+    S->>O: Extract token from context
+
+    alt Token in cache
+        O->>O: Return cached user (< 5ms)
+    else Token not cached
+        O->>P: Validate token (JWKS/OIDC)
+        P->>O: Token valid + claims
+        O->>O: Cache for 5 min
+    end
+
+    O->>S: Add User to context
+    S->>C: Execute tool with auth context
+
+    Note over O: Token caching saves<br/>~95ms per request
 ```
 
 ---
 
-## Why oauth-mcp-proxy?
+## Quick Start
 
-**Without this library:** 100+ lines of OAuth boilerplate, token validation, PKCE, security concerns.
+**Prerequisites:** OAuth app created in your provider (Okta/Google/Azure). See [Provider Guides](docs/providers/).
 
-**With this library:** 3 lines. Production-ready OAuth with best practices built-in.
-
----
-
-## Features
-
-- **3-Line Integration** - `WithOAuth()` does everything
-- **4 Providers** - HMAC, Okta, Google, Azure AD
-- **OAuth 2.1** - Native + Proxy modes, PKCE, token caching
-- **Pluggable Logging** - Integrate with zap, logrus, slog
-- **Production Ready** - Instance-scoped, no globals, security hardened
-- **MCP-Native** - Built specifically for `mcp-go` servers
-
----
-
-## Quick Start (5 Minutes)
-
-### 1. Install
+### 1. Install Library
 
 ```bash
 go get github.com/tuannvm/oauth-mcp-proxy
 ```
 
-### 2. Add OAuth to Your MCP Server
+### 2. Add to Server Code (3 lines)
 
 ```go
-package main
+import oauth "github.com/tuannvm/oauth-mcp-proxy"
 
-import (
-    "net/http"
-    oauth "github.com/tuannvm/oauth-mcp-proxy"
-    mcpserver "github.com/mark3labs/mcp-go/server"
-)
-
-func main() {
-    mux := http.NewServeMux()
-
-    // Enable OAuth (auto-registers endpoints, applies middleware)
-    oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{
-        Provider:  "okta",                        // or "hmac", "google", "azure"
-        Issuer:    "https://yourcompany.okta.com",
-        Audience:  "api://your-mcp-server",
-        // Optional for proxy mode:
-        // ClientID: "...", ClientSecret: "...", ServerURL: "...", RedirectURIs: "..."
-    })
-    if err != nil {
-        panic(err)
-    }
-
-    // Create MCP server with OAuth
-    mcpServer := mcpserver.NewMCPServer("My Server", "1.0.0", oauthOption)
-
-    // Add your tools - automatically OAuth-protected!
-    mcpServer.AddTool(myTool, myToolHandler)
-
-    // Setup MCP endpoint
-    mux.Handle("/mcp", mcpserver.NewStreamableHTTPServer(
-        mcpServer,
-        mcpserver.WithHTTPContextFunc(oauth.CreateHTTPContextFunc()),
-    ))
-
-    http.ListenAndServeTLS(":443", "cert.pem", "key.pem", mux)
-}
-```
-
-### 3. Access Authenticated User in Tools
-
-```go
-func myToolHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-    user, ok := oauth.GetUserFromContext(ctx)
-    if !ok {
-        return nil, fmt.Errorf("not authenticated")
-    }
-
-    // user.Subject, user.Email, user.Username available
-    return mcp.NewToolResultText(fmt.Sprintf("Hello, %s!", user.Username)), nil
-}
-```
-
-**That's it!** Your MCP server now requires OAuth authentication.
-
----
-
-## Configuration Options
-
-```go
-type Config struct {
-    // Required
-    Provider string // "hmac", "okta", "google", "azure"
-    Audience string // Your API audience (e.g., "api://my-server")
-
-    // Provider-specific
-    Issuer    string // OIDC issuer URL (Okta/Google/Azure)
-    JWTSecret []byte // Secret key (HMAC provider only)
-
-    // Optional - OAuth Mode
-    Mode string // "native" (default) or "proxy" - auto-detected
-
-    // Optional - Proxy Mode (client can't do OAuth)
-    ClientID     string // OAuth client ID
-    ClientSecret string // OAuth client secret
-    ServerURL    string // Your server's public URL
-    RedirectURIs string // Allowed redirect URIs
-
-    // Optional - Custom Logging
-    Logger Logger // Your logger (zap, logrus, etc.) - uses default if nil
-}
-```
-
-### OAuth Modes
-
-**Native Mode** (recommended): Client handles OAuth directly with provider
-- Use when: Claude Desktop, browser-based clients
-- Config: Just Provider, Issuer, Audience
-
-**Proxy Mode**: Server proxies OAuth flow for client
-- Use when: Simple CLI tools, legacy clients
-- Config: All fields including ClientID, ServerURL, RedirectURIs
-
-Mode is auto-detected based on whether `ClientID` is provided.
-
----
-
-## Provider Setup
-
-Choose your OAuth provider:
-
-### HMAC (Shared Secret)
-
-**Use when:** Testing, simple deployments, service-to-service
-
-```go
-oauth.WithOAuth(mux, &oauth.Config{
-    Provider:  "hmac",
-    Audience:  "api://my-server",
-    JWTSecret: []byte("your-32-byte-secret-key-here"),
+mux := http.NewServeMux()
+oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
+    Provider: "okta",                        // or "hmac", "google", "azure"
+    Issuer:   os.Getenv("OAUTH_ISSUER"),     // From environment
+    Audience: os.Getenv("OAUTH_AUDIENCE"),
 })
+mcpServer := mcpserver.NewMCPServer("Server", "1.0.0", oauthOption)
 ```
 
-Generate tokens with `jwt.NewWithClaims()`. See [HMAC Guide](docs/providers/HMAC.md).
+### 3. Configure Deployment
 
-### Okta
-
-**Use when:** Enterprise SSO, user management
-
-```go
-oauth.WithOAuth(mux, &oauth.Config{
-    Provider: "okta",
-    Issuer:   "https://yourcompany.okta.com",
-    Audience: "api://your-server",
-})
+**Environment variables** (Kubernetes ConfigMap, docker-compose, etc.):
+```bash
+OAUTH_PROVIDER=okta
+OAUTH_ISSUER=https://company.okta.com
+OAUTH_AUDIENCE=api://my-server
+# For proxy mode: OAUTH_CLIENT_ID, OAUTH_CLIENT_SECRET, etc.
 ```
 
-Setup: [Okta Guide](docs/providers/OKTA.md)
+**See:** [Configuration Guide](docs/CONFIGURATION.md#environment-variables-pattern)
 
-### Google
+### 4. Configure Client
 
-**Use when:** Google Workspace integration
-
-```go
-oauth.WithOAuth(mux, &oauth.Config{
-    Provider: "google",
-    Issuer:   "https://accounts.google.com",
-    Audience: "your-client-id.apps.googleusercontent.com",
-})
+**Auto-discovery** (Claude Desktop):
+```json
+{"mcpServers": {"my-server": {"url": "https://your-server.com/mcp"}}}
 ```
 
-Setup: [Google Guide](docs/providers/GOOGLE.md)
+Client auto-discovers OAuth via `.well-known` endpoints.
 
-### Azure AD
+**See:** [Client Setup Guide](docs/CLIENT-SETUP.md)
 
-**Use when:** Microsoft 365 integration
-
-```go
-oauth.WithOAuth(mux, &oauth.Config{
-    Provider: "azure",
-    Issuer:   "https://login.microsoftonline.com/{tenant}/v2.0",
-    Audience: "api://your-app-id",
-})
-```
-
-Setup: [Azure AD Guide](docs/providers/AZURE.md)
+**Complete example:** [examples/simple/](examples/simple/)
 
 ---
 
-## Custom Logger
+## Providers
 
-Integrate with your logging system:
+```mermaid
+graph TD
+    A[oauth-mcp-proxy] --> B[HMAC<br/>Shared Secret]
+    A --> C[Okta<br/>Enterprise SSO]
+    A --> D[Google<br/>Workspace]
+    A --> E[Azure AD<br/>Microsoft 365]
 
-```go
-// Implement Logger interface
-type MyLogger struct{ logger *zap.Logger }
+    B -.->|Testing/Dev| F[Your Choice]
+    C -.->|Enterprise| F
+    D -.->|Google Users| F
+    E -.->|MS Users| F
 
-func (l *MyLogger) Debug(msg string, args ...interface{}) { l.logger.Sugar().Debugf(msg, args...) }
-func (l *MyLogger) Info(msg string, args ...interface{})  { l.logger.Sugar().Infof(msg, args...) }
-func (l *MyLogger) Warn(msg string, args ...interface{})  { l.logger.Sugar().Warnf(msg, args...) }
-func (l *MyLogger) Error(msg string, args ...interface{}) { l.logger.Sugar().Errorf(msg, args...) }
-
-// Use in config
-oauth.WithOAuth(mux, &oauth.Config{
-    Provider: "okta",
-    Audience: "api://my-server",
-    Logger:   &MyLogger{logger: zapLogger},
-})
+    style A fill:#e1f5ff
+    style F fill:#d4edda
 ```
 
-Default logger uses `log.Printf` with level prefixes.
+| Provider | Best For | Setup Guide |
+|----------|----------|-------------|
+| **HMAC** | Testing, development | [Setup](docs/providers/HMAC.md) |
+| **Okta** | Enterprise SSO | [Setup](docs/providers/OKTA.md) |
+| **Google** | Google Workspace | [Setup](docs/providers/GOOGLE.md) |
+| **Azure AD** | Microsoft 365 | [Setup](docs/providers/AZURE.md) |
+
+**Quick config examples:** See [Configuration Guide](docs/CONFIGURATION.md)
 
 ---
 
-## Security Best Practices
+## Features
 
-🔒 **See [SECURITY.md](docs/SECURITY.md) for complete guide**
-
-**Quick checklist:**
-- ✅ Use HTTPS in production
-- ✅ Never commit secrets (use environment variables)
-- ✅ Validate audience matches your server
-- ✅ Use strong JWTSecret (32+ bytes) for HMAC
-- ✅ Enable PKCE for public clients (auto-enabled)
-- ✅ Regularly rotate secrets
+- ✅ **3-line integration** - `WithOAuth()` handles everything
+- ✅ **Token caching** - 5-minute cache, <5ms validation
+- ✅ **Security hardened** - PKCE, redirect validation, defense-in-depth
+- ✅ **Pluggable logging** - Integrate with zap, logrus, slog
+- ✅ **Instance-scoped** - No globals, thread-safe
+- ✅ **OAuth 2.1** - Latest spec compliance
 
 ---
 
-## Troubleshooting
+## Documentation
 
-### "Authentication required: missing OAuth token"
-- Check: Is `Authorization: Bearer <token>` header present?
-- Check: Did you call `WithHTTPContextFunc(oauth.CreateHTTPContextFunc())`?
+📖 **Setup Guides:**
+- [Provider Setup](docs/providers/) - OAuth provider configuration (Okta/Google/Azure)
+- [Configuration Reference](docs/CONFIGURATION.md) - All server config options
+- [Client Setup](docs/CLIENT-SETUP.md) - Client configuration & auto-discovery
+- [Deployment](docs/CONFIGURATION.md#environment-variables-pattern) - Helm/env vars
 
-### "Authentication failed: invalid token"
-- Check: Token issuer matches config Issuer
-- Check: Token audience matches config Audience
-- Check: Token not expired
-- Check: For HMAC, secret matches
+📚 **Reference:**
+- [Security Best Practices](docs/SECURITY.md) - Production security guide
+- [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues & solutions
+- [Migration from mcp-trino](docs/MIGRATION.md) - Upgrade guide
 
-### "Invalid redirect URI"
-- Native mode: Client's redirect must be localhost for security
-- Proxy mode: Redirect must be in RedirectURIs allowlist
+🎯 **Examples:**
+- [Simple Example](examples/simple/) - 3-line integration (recommended)
+- [Advanced Example](examples/embedded/) - Lower-level API
 
-### Token caching not working
-- Tokens cached 5 minutes by default
-- Cache is instance-scoped (per Server)
-
----
-
-## Examples
-
-- **[Simple Example](examples/simple/)** - Production-ready 3-line integration
-- **[Advanced Example](examples/embedded/)** - Lower-level API for customization
-
----
-
-## Migration from mcp-trino
-
-Using `mcp-trino`'s OAuth? See [MIGRATION.md](docs/MIGRATION.md) for upgrade guide.
+📋 **Planning:**
+- [v0.1.0 Plan](docs/plan.md) - Current release scope
+- [v0.2.0 Plan](docs/plan-standalone.md) - Future standalone mode
 
 ---
 
 ## Development Status
 
-| Phase | Status | Description |
-|-------|--------|-------------|
-| Phase 0-4 | ✅ Complete | Core library + tests |
-| **Phase 5** | 🔄 Current | Documentation + examples |
-| Phase 6 | ⏳ Next | mcp-trino migration validation |
+| Phase | Status |
+|-------|--------|
+| 0-5 | ✅ **Complete** |
+| 6 | ⏳ Next: mcp-trino migration |
 
-**Status:** Ready for v0.1.0 after Phase 5 completion.
+**Release:** v0.1.0 ready after Phase 6 validation
 
 ---
 
 ## Dependencies
 
-4 well-maintained dependencies:
-- **mcp-go** (v0.41.1) - MCP protocol
-- **go-oidc** (v3.16.0) - OIDC validation
-- **jwt** (v5.3.0) - JWT validation
-- **oauth2** (v0.32.0) - OAuth flows
+4 well-maintained, industry-standard libraries:
+
+- `github.com/mark3labs/mcp-go` v0.41.1 - MCP protocol
+- `github.com/coreos/go-oidc/v3` v3.16.0 - OIDC validation
+- `github.com/golang-jwt/jwt/v5` v5.3.0 - JWT validation
+- `golang.org/x/oauth2` v0.32.0 - OAuth flows
+
+All required for core functionality.
 
 ---
 
@@ -299,18 +244,10 @@ Using `mcp-trino`'s OAuth? See [MIGRATION.md](docs/MIGRATION.md) for upgrade gui
 
 Not accepting contributions during extraction phase. After v0.1.0 release, contributions welcome!
 
+**Report issues:** [GitHub Issues](https://github.com/tuannvm/oauth-mcp-proxy/issues)
+
 ---
 
 ## License
 
 MIT License - See [LICENSE](LICENSE)
-
----
-
-## Links
-
-- **[Implementation Plan](docs/plan.md)** - v0.1.0 roadmap
-- **[Provider Guides](docs/providers/)** - Setup instructions
-- **[Security Guide](docs/SECURITY.md)** - Best practices
-- **[Migration Guide](docs/MIGRATION.md)** - From mcp-trino
-- **[Examples](examples/)** - Working code samples
