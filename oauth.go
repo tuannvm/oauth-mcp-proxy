@@ -122,4 +122,3 @@ func WithOAuth(mux *http.ServeMux, cfg *Config) (mcpserver.ServerOption, error) 
 	// Return middleware as server option
 	return mcpserver.WithToolHandlerMiddleware(oauthServer.Middleware()), nil
 }
-

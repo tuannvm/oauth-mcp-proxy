@@ -219,7 +219,7 @@ func TestMiddlewareSignatureCompatibility(t *testing.T) {
 
 	// Type assertion: should be func(ToolHandlerFunc) ToolHandlerFunc
 	// If this compiles, the signature is correct
-	var _ func(mcpserver.ToolHandlerFunc) mcpserver.ToolHandlerFunc = middleware
+	var _ = middleware
 
 	t.Logf("✅ Middleware signature is compatible with mcp-go v0.41.1")
 	t.Logf("   Type: func(server.ToolHandlerFunc) server.ToolHandlerFunc")

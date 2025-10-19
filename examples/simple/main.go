@@ -33,9 +33,9 @@ func main() {
 	// Logger: Optional - use your own logger (zap, logrus, etc.)
 	//         If not provided, uses default log.Printf with level prefixes
 	oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{
-		Provider:  "hmac",                                         // or "okta", "google", "azure"
-		Issuer:    "https://test.example.com",                     // Token issuer URL
-		Audience:  "api://simple-server",                          // Must match token's "aud" claim
+		Provider:  "hmac",                                           // or "okta", "google", "azure"
+		Issuer:    "https://test.example.com",                       // Token issuer URL
+		Audience:  "api://simple-server",                            // Must match token's "aud" claim
 		JWTSecret: []byte("test-secret-key-must-be-32-bytes-long!"), // For HMAC provider
 		// Logger: &myCustomLogger{}, // Optional: integrate with your logging system
 	})
@@ -93,7 +93,7 @@ func main() {
 	// and adds it to the request context. OAuth middleware then validates it.
 	streamableServer := mcpserver.NewStreamableHTTPServer(
 		mcpServer,
-		mcpserver.WithEndpointPath("/mcp"),                         // MCP endpoint path
+		mcpserver.WithEndpointPath("/mcp"), // MCP endpoint path
 		mcpserver.WithHTTPContextFunc(oauth.CreateHTTPContextFunc()), // Token extraction
 	)
 
@@ -136,13 +136,13 @@ func main() {
 // from the OAuth provider's authorization server, not from your code.
 func generateTestToken(cfg *oauth.Config) string {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"sub":                "test-user-123",              // Subject: unique user identifier
-		"email":              "test@example.com",           // User's email address
-		"preferred_username": "testuser",                   // Username (optional)
-		"aud":                cfg.Audience,                 // Must match Config.Audience!
-		"iss":                cfg.Issuer,                   // Must match Config.Issuer
+		"sub":                "test-user-123",                  // Subject: unique user identifier
+		"email":              "test@example.com",               // User's email address
+		"preferred_username": "testuser",                       // Username (optional)
+		"aud":                cfg.Audience,                     // Must match Config.Audience!
+		"iss":                cfg.Issuer,                       // Must match Config.Issuer
 		"exp":                time.Now().Add(time.Hour).Unix(), // Token expires in 1 hour
-		"iat":                time.Now().Unix(),            // Issued at (now)
+		"iat":                time.Now().Unix(),                // Issued at (now)
 	})
 
 	// Sign with secret (must match Config.JWTSecret)

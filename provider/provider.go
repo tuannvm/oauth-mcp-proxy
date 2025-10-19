@@ -48,7 +48,6 @@ type HMACValidator struct {
 	secret     string
 	audience   string
 	secretOnce sync.Once
-	logger     Logger
 }
 
 // OIDCValidator validates JWT tokens using OIDC/JWKS (Okta, Google, Azure)

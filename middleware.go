@@ -97,11 +97,11 @@ func (tc *TokenCache) setCachedToken(tokenHash string, user *User, expiresAt tim
 // Validates OAuth tokens, caches results, and adds authenticated user to context.
 //
 // The middleware:
-//   1. Extracts OAuth token from context (set by CreateHTTPContextFunc)
-//   2. Checks token cache (5-minute TTL)
-//   3. Validates token using configured provider if not cached
-//   4. Adds User to context via userContextKey
-//   5. Passes request to tool handler with authenticated context
+//  1. Extracts OAuth token from context (set by CreateHTTPContextFunc)
+//  2. Checks token cache (5-minute TTL)
+//  3. Validates token using configured provider if not cached
+//  4. Adds User to context via userContextKey
+//  5. Passes request to tool handler with authenticated context
 //
 // Use GetUserFromContext(ctx) in tool handlers to access authenticated user.
 //

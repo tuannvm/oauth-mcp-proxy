@@ -62,7 +62,7 @@ func (c *Config) Validate() error {
 		}
 	case "okta", "google", "azure":
 		if c.Issuer == "" {
-			return fmt.Errorf("Issuer is required for OIDC provider")
+			return fmt.Errorf("issuer is required for OIDC provider")
 		}
 	default:
 		return fmt.Errorf("unknown provider: %s (supported: hmac, okta, google, azure)", c.Provider)
@@ -70,7 +70,7 @@ func (c *Config) Validate() error {
 
 	// Validate audience
 	if c.Audience == "" {
-		return fmt.Errorf("Audience is required")
+		return fmt.Errorf("audience is required")
 	}
 
 	// Validate proxy mode requirements
