@@ -1,38 +1,57 @@
 # OAuth MCP Proxy Examples
 
-## 1. Simple API (Phase 3) - `simple/`
+## Quick Start: 3 Lines of Code
 
-**Simplest OAuth setup using `WithOAuth()` API:**
+```go
+// 1. Get OAuth option
+oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{Provider: "hmac", Audience: "api://my-server", JWTSecret: []byte("secret")})
+
+// 2. Create MCP server with OAuth
+mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
+
+// 3. Add tools - automatically OAuth-protected!
+mcpServer.AddTool(tool, handler)
+```
+
+That's it! All your MCP tools are now protected by OAuth authentication.
+
+---
+
+## 1. Simple API - `simple/`
+
+**Recommended for all production usage. Complete working example:**
 
 ```go
 mux := http.NewServeMux()
 
-// Line 1: Get OAuth option (registers HTTP handlers)
+// Get OAuth option (registers HTTP handlers automatically)
 oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
     Provider:  "hmac",
     Audience:  "api://my-server",
     JWTSecret: []byte("secret"),
 })
 
-// Line 2: Create MCP server with OAuth
+// Create MCP server with OAuth middleware
 mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
 
-// Add tools - automatically OAuth-protected!
+// Add tools - all automatically OAuth-protected
 mcpServer.AddTool(tool, handler)
 
 // Setup MCP endpoint with token extraction
 streamable := server.NewStreamableHTTPServer(mcpServer,
     server.WithHTTPContextFunc(oauth.CreateHTTPContextFunc()),
 )
+mux.Handle("/mcp", streamable)
 ```
 
-**Features:**
-- **2-line OAuth setup** (Phase 3 goal achieved!)
-- Server-wide middleware (all tools protected automatically)
-- Composable with other server options
-- Uses mcp-go v0.41.1 `WithToolHandlerMiddleware` pattern
+**What you get:**
+- All tools OAuth-protected automatically
+- OAuth HTTP endpoints registered
+- Token validation with caching
+- User context in tool handlers
+- Production-ready security
 
-**Run:** `go run examples/simple/main.go`
+**Run:** `cd examples/simple && go run main.go`
 
 **Test:**
 ```bash
@@ -44,56 +63,64 @@ curl -X POST http://localhost:8080/mcp \
 
 ---
 
-## 2. Embedded Mode (Phase 2) - `embedded/`
+## 2. Advanced: Internal Architecture - `embedded/`
 
-**Detailed implementation showing internal architecture:**
+**For understanding how the library works internally. Not recommended for production.**
 
-`embedded/main.go` - Complete MCP server with OAuth authentication
+Shows lower-level APIs:
+- `oauth.NewServer()` - Manual server creation
+- `server.Middleware()` - Manual middleware application
+- `server.RegisterHandlers()` - Manual endpoint registration
+- Custom context extraction
+- Provider package isolation
 
-**Features:**
-- Full MCP server implementation (using mark3labs/mcp-go v0.41.1)
-- Shows internal `NewServer()` API
-- Demonstrates `Server.Middleware()` usage
-- Shows manual middleware application
-- provider/ package architecture visible
-- Context propagation explained
-- Instance-scoped state (no globals)
-- HMAC token validation with caching
-- OAuth metadata endpoints
-- Auto-generates test token
-
-**Run:** `go run examples/embedded/main.go`
-
-**What It Demonstrates (Phase 2 internals):**
-1. Creating OAuth server (`oauth.NewServer()`)
-2. Getting middleware (`server.Middleware()`)
-3. Server-wide middleware with `WithToolHandlerMiddleware`
-4. provider/ package isolation (HMACValidator from provider/)
-5. Context propagation (`ValidateToken(ctx, token)`)
-6. Instance-scoped cache (Server.cache, no globals)
-7. OAuth context extraction from HTTP headers
-8. User context available in MCP tools
+**Run:** `cd examples/embedded && go run main.go`
 
 ---
 
 ## Comparison
 
-| Feature | `simple/` (Phase 3) | `embedded/` (Phase 2) |
-|---------|---------------------|----------------------|
-| **Setup Lines** | 2 lines | ~10 lines |
-| **API** | `WithOAuth()` convenience | `NewServer()` + manual setup |
-| **Recommended** | ✅ For production | For learning internals |
-| **Shows** | Simplest usage | Architecture details |
+| | `simple/` | `embedded/` |
+|---|---|---|
+| **Lines of code** | 3 core lines | ~15 lines |
+| **Use case** | Production | Learning internals |
+| **API** | `WithOAuth()` | `NewServer()` + manual |
+| **Recommended** | ✅ Yes | Only for learning |
 
-**Recommendation:** Use `simple/` for real projects, read `embedded/` to understand how it works.
+Use `simple/` for real projects. Read `embedded/` to understand internals.
 
 ---
 
-## OAuth Endpoints
+## Supported Providers
 
-Both examples expose:
-- `POST /mcp` - MCP protocol endpoint (OAuth protected)
-- `GET /.well-known/oauth-authorization-server` - OAuth metadata
-- `GET /.well-known/oauth-protected-resource` - Resource metadata
-- `GET /.well-known/jwks.json` - JWKS keys (HMAC mode)
-- `GET /.well-known/openid-configuration` - OIDC discovery
+```go
+// HMAC (shared secret)
+oauth.WithOAuth(mux, &oauth.Config{
+    Provider:  "hmac",
+    JWTSecret: []byte("your-secret-key"),
+    Audience:  "api://my-server",
+})
+
+// Okta
+oauth.WithOAuth(mux, &oauth.Config{
+    Provider: "okta",
+    Issuer:   "https://company.okta.com",
+    Audience: "api://my-server",
+})
+
+// Google
+oauth.WithOAuth(mux, &oauth.Config{
+    Provider: "google",
+    Issuer:   "https://accounts.google.com",
+    Audience: "your-client-id.apps.googleusercontent.com",
+})
+
+// Azure AD
+oauth.WithOAuth(mux, &oauth.Config{
+    Provider: "azure",
+    Issuer:   "https://login.microsoftonline.com/{tenant}/v2.0",
+    Audience: "api://your-app-id",
+})
+```
+
+All providers support both native mode (client handles OAuth) and proxy mode (server proxies OAuth flow).
