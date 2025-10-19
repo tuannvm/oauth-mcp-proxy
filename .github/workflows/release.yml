@@ -45,8 +45,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           DEFAULT_BUMP: ${{ github.event.inputs.bump_type }}
-          WITH_V: true
-          RELEASE_BRANCHES: main
+          TAG_PREFIX: v
           VERBOSE: true
 
       - name: Run GoReleaser
