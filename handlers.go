@@ -36,9 +36,9 @@ func (h *OAuth2Handler) GetConfig() *OAuth2Config {
 
 // OAuth2Config holds OAuth2 configuration
 type OAuth2Config struct {
-	Enabled     bool
-	Mode        string // "native" or "proxy"
-	Provider    string
+	Enabled      bool
+	Mode         string // "native" or "proxy"
+	Provider     string
 	RedirectURIs string
 
 	// OIDC configuration
@@ -178,20 +178,20 @@ func NewOAuth2ConfigFromConfig(cfg *Config, version string) *OAuth2Config {
 	}
 
 	return &OAuth2Config{
-		Enabled:          true,
-		Mode:             cfg.Mode,
-		Provider:         cfg.Provider,
-		RedirectURIs:     cfg.RedirectURIs,
-		Issuer:           cfg.Issuer,
-		Audience:         cfg.Audience,
-		ClientID:         cfg.ClientID,
-		ClientSecret:     cfg.ClientSecret,
-		MCPHost:          mcpHost,
-		MCPPort:          mcpPort,
-		MCPURL:           mcpURL,
-		Scheme:           scheme,
-		Version:          version,
-		stateSigningKey:  cfg.JWTSecret,
+		Enabled:         true,
+		Mode:            cfg.Mode,
+		Provider:        cfg.Provider,
+		RedirectURIs:    cfg.RedirectURIs,
+		Issuer:          cfg.Issuer,
+		Audience:        cfg.Audience,
+		ClientID:        cfg.ClientID,
+		ClientSecret:    cfg.ClientSecret,
+		MCPHost:         mcpHost,
+		MCPPort:         mcpPort,
+		MCPURL:          mcpURL,
+		Scheme:          scheme,
+		Version:         version,
+		stateSigningKey: cfg.JWTSecret,
 	}
 }
 

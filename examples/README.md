@@ -5,10 +5,11 @@
 `embedded.go` - Complete MCP server with OAuth authentication
 
 **Features:**
-- Full MCP server implementation (using mark3labs/mcp-go)
+- Full MCP server implementation (using mark3labs/mcp-go v0.41.1)
+- **Server-wide OAuth middleware** (WithToolHandlerMiddleware)
 - OAuth-protected MCP tool ("hello")
-- Demonstrates middleware application to tools
-- HMAC token validation
+- Context propagation (HTTP → MCP → OAuth → Tool)
+- HMAC token validation with caching
 - OAuth metadata endpoints
 - Auto-generates test token for easy testing
 
@@ -28,13 +29,15 @@ curl -X POST http://localhost:8080/mcp \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"hello","arguments":{}}}'
 ```
 
-**What It Demonstrates:**
+**What It Demonstrates (Phase 2 Features):**
 1. Creating OAuth server (`oauth.NewServer()`)
-2. Creating MCP server with tools
-3. **Applying OAuth middleware to tools** (wraps tool handler)
-4. OAuth context extraction from HTTP headers
-5. User context available in MCP tools
-6. Complete end-to-end OAuth flow
+2. **Server-wide middleware** (`WithToolHandlerMiddleware`) - mcp-go v0.41.1
+3. provider/ package isolation (HMACValidator from provider/)
+4. Context propagation (`ValidateToken(ctx, token)`)
+5. Instance-scoped state (Server.cache, no globals)
+6. OAuth context extraction from HTTP headers
+7. User context available in MCP tools
+8. Complete end-to-end OAuth flow
 
 **Endpoints:**
 - `POST /mcp` - MCP protocol endpoint (OAuth protected)

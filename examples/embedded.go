@@ -7,15 +7,15 @@ import (
 	"net/http"
 	"time"
 
-	oauth "github.com/tuannvm/oauth-mcp-proxy"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
+	oauth "github.com/tuannvm/oauth-mcp-proxy"
 )
 
 func main() {
 	log.Println("=== OAuth MCP Proxy - Embedded Mode Example ===")
-	log.Println("Creating a simple MCP server with OAuth authentication")
+	log.Println("Phase 2: Package structure + Context propagation")
 	log.Println()
 
 	// 1. Configure OAuth (HMAC mode for simplicity)
@@ -27,22 +27,31 @@ func main() {
 		JWTSecret: []byte("test-secret-key-must-be-32-bytes-long!"),
 	}
 
-	// 2. Create OAuth server (Phase 1.5 API)
+	// 2. Create OAuth server
+	// Phase 2 features demonstrated:
+	// - provider/ package isolation (HMACValidator from provider/)
+	// - Context propagation (ValidateToken accepts context.Context)
+	// - Instance-scoped state (Server has own cache)
 	oauthServer, err := oauth.NewServer(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create OAuth server: %v", err)
 	}
-	log.Println("✅ OAuth server created (HMAC, instance-scoped cache)")
+	log.Println("✅ OAuth server created (provider/ package)")
+	log.Println("   - HMACValidator from provider/ subpackage")
+	log.Println("   - Instance-scoped cache (no globals)")
+	log.Println("   - Context propagation enabled")
 
-	// 3. Create MCP server with a simple tool
-	mcpServer := mcpserver.NewMCPServer("Hello World MCP Server", "1.0.0")
+	// 3. Create MCP server with OAuth middleware applied to ALL tools
+	// Using mcp-go v0.41.1's WithToolHandlerMiddleware option
+	mcpServer := mcpserver.NewMCPServer("Hello World MCP Server", "1.0.0",
+		mcpserver.WithToolHandlerMiddleware(oauthServer.Middleware()),
+	)
 
-	// Get OAuth middleware
-	middleware := oauthServer.Middleware()
-
-	// Define tool handler
+	// 4. Define tool handler
+	// Context flow: HTTP Request → MCP → OAuth Middleware → ValidateToken(ctx) → Tool Handler
 	helloHandler := func(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		// Get authenticated user from context (set by middleware)
+		// Get authenticated user from context (set by OAuth middleware)
+		// The ctx here has traveled through: HTTP → MCP → OAuth validation chain
 		user, ok := oauth.GetUserFromContext(ctx)
 		if !ok {
 			return mcp.NewToolResultError("Authentication required"), nil
@@ -54,10 +63,8 @@ func main() {
 		return mcp.NewToolResultText(message), nil
 	}
 
-	// Wrap handler with OAuth middleware
-	protectedHandler := middleware(helloHandler)
-
-	// Add protected tool to MCP server
+	// 5. Add tool to MCP server
+	// OAuth middleware is automatically applied (server-wide)
 	mcpServer.AddTool(
 		mcp.Tool{
 			Name:        "hello",
@@ -67,12 +74,13 @@ func main() {
 				Properties: map[string]interface{}{},
 			},
 		},
-		protectedHandler, // OAuth middleware applied!
+		helloHandler, // OAuth middleware applied automatically by server!
 	)
 
-	log.Println("✅ MCP server created with OAuth-protected 'hello' tool")
+	log.Println("✅ MCP server created with OAuth middleware")
+	log.Println("   - All tools protected by OAuth (server-wide)")
 
-	// 5. Setup HTTP server
+	// 6. Setup HTTP server
 	mux := http.NewServeMux()
 
 	// Register OAuth endpoints

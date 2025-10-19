@@ -2,6 +2,8 @@ package oauth
 
 import (
 	"fmt"
+
+	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
 // Config holds OAuth configuration
@@ -85,7 +87,7 @@ func (c *Config) Validate() error {
 
 // SetupOAuth initializes OAuth validation and sets up OAuth configuration
 // Deprecated: Use NewServer() instead
-func SetupOAuth(cfg *Config) (TokenValidator, error) {
+func SetupOAuth(cfg *Config) (provider.TokenValidator, error) {
 	logger := cfg.Logger
 	if logger == nil {
 		logger = &defaultLogger{}
@@ -97,24 +99,36 @@ func SetupOAuth(cfg *Config) (TokenValidator, error) {
 		return nil, fmt.Errorf("failed to create OAuth validator: %w", err)
 	}
 
-	if err := validator.Initialize(cfg); err != nil {
-		return nil, fmt.Errorf("failed to initialize OAuth validator: %w", err)
-	}
-
 	logger.Info("OAuth authentication enabled with provider: %s", cfg.Provider)
 	return validator, nil
 }
 
 // createValidator creates the appropriate token validator based on configuration
-func createValidator(cfg *Config, logger Logger) (TokenValidator, error) {
+func createValidator(cfg *Config, logger Logger) (provider.TokenValidator, error) {
+	// Convert root Config to provider.Config
+	providerCfg := &provider.Config{
+		Provider:  cfg.Provider,
+		Issuer:    cfg.Issuer,
+		Audience:  cfg.Audience,
+		JWTSecret: cfg.JWTSecret,
+		Logger:    logger,
+	}
+
+	var validator provider.TokenValidator
 	switch cfg.Provider {
 	case "hmac":
-		return &HMACValidator{logger: logger}, nil
+		validator = &provider.HMACValidator{}
 	case "okta", "google", "azure":
-		return &OIDCValidator{logger: logger}, nil
+		validator = &provider.OIDCValidator{}
 	default:
 		return nil, fmt.Errorf("unknown OAuth provider: %s", cfg.Provider)
 	}
+
+	if err := validator.Initialize(providerCfg); err != nil {
+		return nil, err
+	}
+
+	return validator, nil
 }
 
 // CreateOAuth2Handler creates a new OAuth2 handler for HTTP endpoints

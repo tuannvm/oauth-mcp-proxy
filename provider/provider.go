@@ -1,4 +1,4 @@
-package oauth
+package provider
 
 import (
 	"context"
@@ -13,9 +13,33 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
+// User represents an authenticated user
+type User struct {
+	Username string
+	Email    string
+	Subject  string
+}
+
+// Logger interface for pluggable logging
+type Logger interface {
+	Debug(msg string, args ...interface{})
+	Info(msg string, args ...interface{})
+	Warn(msg string, args ...interface{})
+	Error(msg string, args ...interface{})
+}
+
+// Config holds OAuth configuration (subset needed by provider)
+type Config struct {
+	Provider  string
+	Issuer    string
+	Audience  string
+	JWTSecret []byte
+	Logger    Logger
+}
+
 // TokenValidator interface for OAuth token validation
 type TokenValidator interface {
-	ValidateToken(token string) (*User, error)
+	ValidateToken(ctx context.Context, token string) (*User, error)
 	Initialize(cfg *Config) error
 }
 
@@ -54,7 +78,8 @@ func (v *HMACValidator) Initialize(cfg *Config) error {
 }
 
 // ValidateToken validates JWT token using HMAC-SHA256
-func (v *HMACValidator) ValidateToken(tokenString string) (*User, error) {
+func (v *HMACValidator) ValidateToken(ctx context.Context, tokenString string) (*User, error) {
+	// Note: ctx parameter accepted for interface compliance, but HMAC validation is local-only (no I/O)
 	// Remove Bearer prefix if present
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
@@ -188,12 +213,12 @@ func (v *OIDCValidator) Initialize(cfg *Config) error {
 }
 
 // ValidateToken validates JWT token using OIDC/JWKS
-func (v *OIDCValidator) ValidateToken(tokenString string) (*User, error) {
+func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (*User, error) {
 	// Remove Bearer prefix if present
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-	// Use standard library context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Use incoming context with timeout for OIDC provider call
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	// go-oidc handles RSA signature validation, JWKS fetching, and key rotation
@@ -266,4 +291,44 @@ func (v *OIDCValidator) validateAudience(claims jwt.MapClaims) error {
 	}
 
 	return fmt.Errorf("invalid audience claim type")
+}
+
+// validateTokenClaims validates standard JWT claims
+func validateTokenClaims(claims jwt.MapClaims) error {
+	// Validate expiration
+	if exp, ok := claims["exp"]; ok {
+		if expTime, ok := exp.(float64); ok {
+			if time.Now().Unix() > int64(expTime) {
+				return fmt.Errorf("token expired")
+			}
+		}
+	}
+
+	// Validate not before
+	if nbf, ok := claims["nbf"]; ok {
+		if nbfTime, ok := nbf.(float64); ok {
+			if time.Now().Unix() < int64(nbfTime) {
+				return fmt.Errorf("token not yet valid")
+			}
+		}
+	}
+
+	// Validate issued at (should not be in the future)
+	if iat, ok := claims["iat"]; ok {
+		if iatTime, ok := iat.(float64); ok {
+			if time.Now().Unix() < int64(iatTime) {
+				return fmt.Errorf("token issued in the future")
+			}
+		}
+	}
+
+	return nil
+}
+
+// getStringClaim safely extracts a string claim
+func getStringClaim(claims jwt.MapClaims, key string) string {
+	if val, ok := claims[key].(string); ok {
+		return val
+	}
+	return ""
 }

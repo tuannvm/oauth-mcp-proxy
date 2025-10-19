@@ -222,19 +222,191 @@ type Logger interface {
 
 ## Phase 2: Package Structure
 
-**Status:** ⏳ Not Started
+**Status:** ✅ Completed (with Gemini 2.5 Pro review fix)
 
-### Tasks
+**Started:** 2025-10-19
+**Completed:** 2025-10-19
 
-- [ ] Move providers to provider/ package
-- [ ] Handlers stay in ROOT (need Server internals)
-- [ ] Middleware stays in ROOT (needs Server, mcp-go types)
-- [ ] Cache already in internal/cache/ (done in Phase 1.5)
-- [ ] Update imports
+### Tasks Completed
+
+- [x] Move providers to provider/ package
+- [x] Handlers stay in ROOT (need Server internals)
+- [x] Middleware stays in ROOT (needs Server, mcp-go types)
+- [x] Update imports across codebase
+- [x] Fix import cycles
+- [x] All tests passing
+- [x] **Phase 2.1:** Add context.Context parameter (post-review)
 
 ### Implementation Notes
 
-*TBD*
+**Package Restructure:**
+- Created `provider/` subpackage
+- Moved `providers.go` → `provider/provider.go`
+- Moved `providers_test.go` → `provider/provider_test.go`
+- Changed package declaration to `package provider`
+
+**Types Moved to provider/ Package:**
+```go
+// provider/provider.go now defines:
+type User struct {
+    Username string
+    Email    string
+    Subject  string
+}
+
+type Logger interface {
+    Debug(msg string, args ...interface{})
+    Info(msg string, args ...interface{})
+    Warn(msg string, args ...interface{})
+    Error(msg string, args ...interface{})
+}
+
+type Config struct {
+    Provider  string
+    Issuer    string
+    Audience  string
+    JWTSecret []byte
+    Logger    Logger
+}
+
+type TokenValidator interface {
+    ValidateToken(token string) (*User, error)
+    Initialize(cfg *Config) error
+}
+
+type HMACValidator struct {...}
+type OIDCValidator struct {...}
+```
+
+**Helper Functions Moved:**
+- `validateTokenClaims()` - JWT claim validation
+- `getStringClaim()` - Safe claim extraction
+- Now in provider package (used by validators)
+
+**Import Cycle Resolution:**
+- **Problem:** Root → provider → root (for Config, Logger, User)
+- **Solution:** provider package defines its own Config/Logger/User
+  - Root Config is superset (Mode, ClientID, ServerURL, etc.)
+  - provider.Config is subset (Provider, Issuer, Audience, JWTSecret, Logger)
+  - `createValidator()` converts root Config → provider.Config
+
+**Config Conversion Pattern:**
+```go
+// config.go
+func createValidator(cfg *Config, logger Logger) (provider.TokenValidator, error) {
+    providerCfg := &provider.Config{
+        Provider:  cfg.Provider,
+        Issuer:    cfg.Issuer,
+        Audience:  cfg.Audience,
+        JWTSecret: cfg.JWTSecret,
+        Logger:    logger,
+    }
+
+    var validator provider.TokenValidator
+    switch cfg.Provider {
+    case "hmac":
+        validator = &provider.HMACValidator{}
+    case "okta", "google", "azure":
+        validator = &provider.OIDCValidator{}
+    }
+
+    validator.Initialize(providerCfg)
+    return validator, nil
+}
+```
+
+**Type Re-exports for Compatibility:**
+```go
+// middleware.go
+type User = provider.User  // Re-export for backward compatibility
+```
+
+**Files Modified:**
+- `provider/provider.go` - Added User, Logger, Config types, no import of root
+- `provider/provider_test.go` - Removed root oauth import, uses provider.Config
+- `config.go` - Added provider import, config conversion logic
+- `oauth.go` - Uses provider.TokenValidator
+- `middleware.go` - Re-exports User, uses provider.TokenValidator
+
+**Build & Test Status:**
+- `go build ./...` ✅ Success
+- `make test` ✅ All tests passing (oauth + provider packages)
+- `make fmt` ✅ Applied formatting
+- `examples/embedded.go` ✅ Compiles successfully
+- No import cycles ✅
+
+**Package Dependencies:**
+```
+oauth (root)
+  ├─> provider/ (no dependency on root)
+  │   ├─> go-oidc
+  │   ├─> jwt
+  │   └─> oauth2
+  └─> mcp-go
+```
+
+**Key Achievements:**
+- ✅ Clean package structure (providers isolated)
+- ✅ No import cycles
+- ✅ All tests passing
+- ✅ Example compiles
+- ✅ Backward compatible (User re-exported)
+
+### Phase 2.1: Context Parameter (Post-Gemini Review)
+
+**Date:** 2025-10-19
+**Trigger:** Gemini 2.5 Pro review identified missing context parameter
+
+**Issue Identified:**
+- `TokenValidator.ValidateToken()` lacked `context.Context` parameter
+- OIDC validation creates `context.Background()` internally (line 220)
+- No timeout/cancellation propagation from HTTP request → validator
+
+**Changes Made:**
+```go
+// Before
+type TokenValidator interface {
+    ValidateToken(token string) (*User, error)
+}
+
+// After
+type TokenValidator interface {
+    ValidateToken(ctx context.Context, token string) (*User, error)
+}
+```
+
+**Files Modified:**
+1. `provider/provider.go` - Interface + both validators (HMACValidator, OIDCValidator)
+2. `middleware.go` - Pass `ctx` to ValidateToken (line 123)
+3. `provider/provider_test.go` - 6 call sites updated with `context.Background()`
+4. `phase2_integration_test.go` - 3 call sites updated with `context.Background()`
+
+**Key Changes:**
+- `HMACValidator.ValidateToken(ctx, token)` - ctx accepted but unused (local-only validation)
+- `OIDCValidator.ValidateToken(ctx, token)` - Uses incoming ctx with 10s timeout
+  ```go
+  // Before: context.Background() ignores request cancellation
+  ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+
+  // After: Honors upstream timeout/cancellation
+  ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+  ```
+- `middleware.go:123` - Passes MCP request context to validator
+
+**Impact:**
+- **Breaking change** (pre-v0.1.0, acceptable)
+- Enables proper timeout control for OIDC network calls
+- Request cancellation now propagates: HTTP → MCP → Middleware → Validator → OIDC provider
+
+**Verification:**
+- ✅ `go build ./...` - Compiles
+- ✅ `make test` - All tests passing (root + provider packages)
+- ✅ `examples/embedded.go` - Compiles
+
+**Rationale (Gemini 2.5 Pro):**
+- "Must-do before v0.1.0" - Prevents breaking change in v0.1.1
+- Idiomatic Go: I/O methods accept context as first parameter
+- Fixes bug: OIDC calls currently ignore upstream cancellation
 
 ---
 

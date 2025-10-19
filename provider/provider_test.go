@@ -1,6 +1,7 @@
-package oauth
+package provider
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -37,7 +38,7 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 			t.Fatalf("Failed to sign token: %v", err)
 		}
 
-		user, err := validator.ValidateToken(tokenString)
+		user, err := validator.ValidateToken(context.Background(), tokenString)
 		if err != nil {
 			t.Errorf("Expected valid token to pass, got error: %v", err)
 		}
@@ -61,7 +62,7 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 			t.Fatalf("Failed to sign token: %v", err)
 		}
 
-		_, err = validator.ValidateToken(tokenString)
+		_, err = validator.ValidateToken(context.Background(), tokenString)
 		if err == nil {
 			t.Error("Expected token with wrong audience to fail validation")
 		}
@@ -84,7 +85,7 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 			t.Fatalf("Failed to sign token: %v", err)
 		}
 
-		_, err = validator.ValidateToken(tokenString)
+		_, err = validator.ValidateToken(context.Background(), tokenString)
 		if err == nil {
 			t.Error("Expected token without audience to fail validation")
 		}
@@ -108,7 +109,7 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 			t.Fatalf("Failed to sign token: %v", err)
 		}
 
-		user, err := validator.ValidateToken(tokenString)
+		user, err := validator.ValidateToken(context.Background(), tokenString)
 		if err != nil {
 			t.Errorf("Expected token with correct audience in array to pass, got error: %v", err)
 		}
@@ -132,7 +133,7 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 			t.Fatalf("Failed to sign token: %v", err)
 		}
 
-		_, err = validator.ValidateToken(tokenString)
+		_, err = validator.ValidateToken(context.Background(), tokenString)
 		if err == nil {
 			t.Error("Expected token with wrong audience array to fail validation")
 		}
@@ -235,7 +236,7 @@ func TestHMACValidator_SecurityValidation(t *testing.T) {
 		}
 
 		// This should FAIL - the vulnerability would allow this to pass
-		_, err = validator.ValidateToken(tokenString)
+		_, err = validator.ValidateToken(context.Background(), tokenString)
 		if err == nil {
 			t.Error("SECURITY VULNERABILITY: Cross-service token was accepted! This should fail.")
 		}

@@ -3,12 +3,14 @@ package oauth
 import (
 	"fmt"
 	"net/http"
+
+	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
 // Server represents an OAuth authentication server instance
 type Server struct {
 	config    *Config
-	validator TokenValidator
+	validator provider.TokenValidator
 	cache     *TokenCache
 	handler   *OAuth2Handler
 	logger    Logger
@@ -31,10 +33,6 @@ func NewServer(cfg *Config) (*Server, error) {
 	validator, err := createValidator(cfg, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create validator: %w", err)
-	}
-
-	if err := validator.Initialize(cfg); err != nil {
-		return nil, fmt.Errorf("failed to initialize validator: %w", err)
 	}
 
 	// Create instance-scoped cache

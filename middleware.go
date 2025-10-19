@@ -10,10 +10,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
+
+// Re-export User from provider for backwards compatibility
+type User = provider.User
 
 // Context keys
 type contextKey string
@@ -34,7 +37,6 @@ type CachedToken struct {
 	User      *User
 	ExpiresAt time.Time
 }
-
 
 // WithOAuthToken adds an OAuth token to the context
 func WithOAuthToken(ctx context.Context, token string) context.Context {
@@ -117,8 +119,8 @@ func (s *Server) Middleware() func(server.ToolHandlerFunc) server.ToolHandlerFun
 			tokenHashPreview := tokenHashFull[:16] + "..."
 			s.logger.Info("Validating token for tool %s (hash: %s)", req.Params.Name, tokenHashPreview)
 
-			// Validate token using configured provider
-			user, err := s.validator.ValidateToken(tokenString)
+			// Validate token using configured provider (with request context for timeout/cancellation)
+			user, err := s.validator.ValidateToken(ctx, tokenString)
 			if err != nil {
 				s.logger.Error("Token validation failed for tool %s: %v", req.Params.Name, err)
 				return nil, fmt.Errorf("authentication failed: %w", err)
@@ -139,7 +141,7 @@ func (s *Server) Middleware() func(server.ToolHandlerFunc) server.ToolHandlerFun
 
 // OAuthMiddleware creates an authentication middleware (legacy function for compatibility)
 // Deprecated: Use NewServer() and Server.Middleware() instead
-func OAuthMiddleware(validator TokenValidator, enabled bool) func(server.ToolHandlerFunc) server.ToolHandlerFunc {
+func OAuthMiddleware(validator provider.TokenValidator, enabled bool) func(server.ToolHandlerFunc) server.ToolHandlerFunc {
 	// Create a temporary server for legacy compatibility
 	cache := &TokenCache{cache: make(map[string]*CachedToken)}
 	s := &Server{
@@ -158,54 +160,7 @@ func OAuthMiddleware(validator TokenValidator, enabled bool) func(server.ToolHan
 	return s.Middleware()
 }
 
-// User represents an authenticated user
-type User struct {
-	Username string
-	Email    string
-	Subject  string
-}
-
 // validateJWT is deprecated - use provider-based validation instead
-
-// validateTokenClaims validates standard JWT claims
-func validateTokenClaims(claims jwt.MapClaims) error {
-	// Validate expiration
-	if exp, ok := claims["exp"]; ok {
-		if expTime, ok := exp.(float64); ok {
-			if time.Now().Unix() > int64(expTime) {
-				return fmt.Errorf("token expired")
-			}
-		}
-	}
-
-	// Validate not before
-	if nbf, ok := claims["nbf"]; ok {
-		if nbfTime, ok := nbf.(float64); ok {
-			if time.Now().Unix() < int64(nbfTime) {
-				return fmt.Errorf("token not yet valid")
-			}
-		}
-	}
-
-	// Validate issued at (should not be in the future)
-	if iat, ok := claims["iat"]; ok {
-		if iatTime, ok := iat.(float64); ok {
-			if time.Now().Unix() < int64(iatTime) {
-				return fmt.Errorf("token issued in the future")
-			}
-		}
-	}
-
-	return nil
-}
-
-// getStringClaim safely extracts a string claim
-func getStringClaim(claims jwt.MapClaims, key string) string {
-	if val, ok := claims[key].(string); ok {
-		return val
-	}
-	return ""
-}
 
 // GetUserFromContext extracts user from context
 func GetUserFromContext(ctx context.Context) (*User, bool) {
@@ -238,7 +193,7 @@ func CreateHTTPContextFunc() func(context.Context, *http.Request) context.Contex
 // CreateRequestAuthHook creates a server-level authentication hook for all MCP requests
 // Note: This function is deprecated and should not be used as it cannot propagate context.
 // Use OAuthMiddleware at the tool level instead, which properly handles context propagation.
-func CreateRequestAuthHook(validator TokenValidator) func(context.Context, interface{}, interface{}) error {
+func CreateRequestAuthHook(validator provider.TokenValidator) func(context.Context, interface{}, interface{}) error {
 	return func(ctx context.Context, id interface{}, message interface{}) error {
 		// This hook cannot propagate context changes due to its signature limitation.
 		// Authentication is handled by tool-level middleware instead.
