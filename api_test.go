@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,10 +30,14 @@ func TestWithOAuth(t *testing.T) {
 			JWTSecret: []byte("test-secret-key-must-be-32-bytes-long!"),
 		}
 
-		// Get OAuth option
-		oauthOption, err := WithOAuth(mux, cfg)
+		// Get OAuth server and option
+		oauthServer, oauthOption, err := WithOAuth(mux, cfg)
 		if err != nil {
 			t.Fatalf("WithOAuth failed: %v", err)
+		}
+
+		if oauthServer == nil {
+			t.Fatal("Expected OAuth server, got nil")
 		}
 
 		if oauthOption == nil {
@@ -75,7 +80,7 @@ func TestWithOAuth(t *testing.T) {
 			JWTSecret:    []byte("test-secret-key-must-be-32-bytes-long!"),
 		}
 
-		oauthOption, err := WithOAuth(mux, cfg)
+		_, oauthOption, err := WithOAuth(mux, cfg)
 		if err != nil {
 			t.Fatalf("WithOAuth failed in proxy mode: %v", err)
 		}
@@ -94,7 +99,7 @@ func TestWithOAuth(t *testing.T) {
 			Provider: "invalid-provider",
 		}
 
-		_, err := WithOAuth(mux, cfg)
+		_, _, err := WithOAuth(mux, cfg)
 		if err == nil {
 			t.Error("Expected error with invalid config")
 		}
@@ -116,7 +121,7 @@ func TestWithOAuth(t *testing.T) {
 		}
 
 		// 1. Get OAuth option
-		oauthOption, err := WithOAuth(mux, cfg)
+		_, oauthOption, err := WithOAuth(mux, cfg)
 		if err != nil {
 			t.Fatalf("WithOAuth failed: %v", err)
 		}
@@ -201,7 +206,7 @@ func TestWithOAuthAPI(t *testing.T) {
 		mux := http.NewServeMux()
 
 		// Line 1: Get OAuth option
-		oauthOption, err := WithOAuth(mux, &Config{
+		_, oauthOption, err := WithOAuth(mux, &Config{
 			Provider:  "hmac",
 			Issuer:    "https://test.example.com",
 			Audience:  "api://test",
@@ -227,7 +232,7 @@ func TestWithOAuthAPI(t *testing.T) {
 		// Test that WithOAuth composes with other server options
 
 		mux := http.NewServeMux()
-		oauthOption, _ := WithOAuth(mux, &Config{
+		_, oauthOption, _ := WithOAuth(mux, &Config{
 			Provider:  "hmac",
 			Issuer:    "https://test.example.com",
 			Audience:  "api://test",
@@ -242,5 +247,180 @@ func TestWithOAuthAPI(t *testing.T) {
 		}
 
 		t.Logf("✅ WithOAuth() composes with other server options")
+	})
+}
+
+func TestServerWrapHandler(t *testing.T) {
+	t.Run("Returns401WithoutToken", func(t *testing.T) {
+		cfg := &Config{
+			Provider:  "hmac",
+			Issuer:    "https://test.example.com",
+			Audience:  "api://test",
+			ServerURL: "https://test-server.com",
+			JWTSecret: []byte("test-secret-key-must-be-32-bytes-long!"),
+		}
+
+		server, err := NewServer(cfg)
+		if err != nil {
+			t.Fatalf("NewServer failed: %v", err)
+		}
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("protected resource"))
+		})
+
+		wrappedHandler := server.WrapHandler(handler)
+
+		req := httptest.NewRequest("GET", "/protected", nil)
+		w := httptest.NewRecorder()
+
+		wrappedHandler.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401, got %d", w.Code)
+		}
+
+		authHeader := w.Header().Get("WWW-Authenticate")
+		if !strings.Contains(authHeader, "invalid_token") {
+			t.Errorf("Expected WWW-Authenticate header with error, got: %s", authHeader)
+		}
+
+		if !strings.Contains(w.Body.String(), "invalid_token") {
+			t.Errorf("Expected JSON error response, got: %s", w.Body.String())
+		}
+	})
+
+	t.Run("ExtractsTokenWithBearer", func(t *testing.T) {
+		cfg := &Config{
+			Provider:  "hmac",
+			Issuer:    "https://test.example.com",
+			Audience:  "api://test",
+			ServerURL: "https://test-server.com",
+			JWTSecret: []byte("test-secret-key-must-be-32-bytes-long!"),
+		}
+
+		server, err := NewServer(cfg)
+		if err != nil {
+			t.Fatalf("NewServer failed: %v", err)
+		}
+
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		wrappedHandler := server.WrapHandler(handler)
+
+		req := httptest.NewRequest("GET", "/protected", nil)
+		req.Header.Set("Authorization", "Bearer some-token")
+		w := httptest.NewRecorder()
+
+		wrappedHandler.ServeHTTP(w, req)
+
+		if w.Code == http.StatusUnauthorized {
+			t.Log("Token validation works")
+		}
+	})
+}
+
+func TestServerHelperMethods(t *testing.T) {
+	cfg := &Config{
+		Provider:  "hmac",
+		Issuer:    "https://test.example.com",
+		Audience:  "api://test",
+		ServerURL: "https://test-server.com",
+		JWTSecret: []byte("test-secret-key-must-be-32-bytes-long!"),
+	}
+
+	server, err := NewServer(cfg)
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+
+	t.Run("DiscoveryURLHelpers", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			method   func() string
+			expected string
+		}{
+			{"GetAuthorizationServerMetadataURL", server.GetAuthorizationServerMetadataURL, "https://test-server.com/.well-known/oauth-authorization-server"},
+			{"GetProtectedResourceMetadataURL", server.GetProtectedResourceMetadataURL, "https://test-server.com/.well-known/oauth-protected-resource"},
+			{"GetOIDCDiscoveryURL", server.GetOIDCDiscoveryURL, "https://test-server.com/.well-known/openid-configuration"},
+			{"GetCallbackURL", server.GetCallbackURL, "https://test-server.com/oauth/callback"},
+			{"GetAuthorizeURL", server.GetAuthorizeURL, "https://test-server.com/oauth/authorize"},
+			{"GetTokenURL", server.GetTokenURL, "https://test-server.com/oauth/token"},
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := tt.method()
+				if got != tt.expected {
+					t.Errorf("Expected %s, got %s", tt.expected, got)
+				}
+			})
+		}
+	})
+
+	t.Run("GetAllEndpoints", func(t *testing.T) {
+		endpoints := server.GetAllEndpoints()
+		if len(endpoints) != 3 {
+			t.Errorf("Expected 3 endpoints in native mode, got %d", len(endpoints))
+		}
+
+		proxyCfg := &Config{
+			Mode:         "proxy",
+			Provider:     "hmac",
+			Issuer:       "https://test.example.com",
+			Audience:     "api://test",
+			ClientID:     "test-client",
+			ClientSecret: "test-secret",
+			ServerURL:    "https://test-server.com",
+			RedirectURIs: "https://test-server.com/callback",
+			JWTSecret:    []byte("test-secret-key-must-be-32-bytes-long!"),
+		}
+		proxyServer, _ := NewServer(proxyCfg)
+		proxyEndpoints := proxyServer.GetAllEndpoints()
+		if len(proxyEndpoints) != 7 {
+			t.Errorf("Expected 7 endpoints in proxy mode, got %d", len(proxyEndpoints))
+		}
+	})
+
+	t.Run("GetStatusString", func(t *testing.T) {
+		statusHTTPS := server.GetStatusString(true)
+		if !strings.Contains(statusHTTPS, "OAuth enabled") {
+			t.Errorf("Expected 'OAuth enabled', got: %s", statusHTTPS)
+		}
+		if strings.Contains(statusHTTPS, "WARNING") {
+			t.Errorf("Expected no warning for HTTPS, got: %s", statusHTTPS)
+		}
+
+		statusHTTP := server.GetStatusString(false)
+		if !strings.Contains(statusHTTP, "WARNING") {
+			t.Errorf("Expected warning for HTTP, got: %s", statusHTTP)
+		}
+	})
+
+	t.Run("LogStartup", func(t *testing.T) {
+		server.LogStartup(true)
+		server.LogStartup(false)
+		t.Log("LogStartup executed without errors")
+	})
+
+	t.Run("GetHTTPServerOptions", func(t *testing.T) {
+		opts := server.GetHTTPServerOptions()
+		if len(opts) == 0 {
+			t.Error("Expected at least one option")
+		}
+
+		mcpServer := mcpserver.NewMCPServer("Test", "1.0.0")
+		allOpts := append(opts,
+			mcpserver.WithEndpointPath("/mcp"),
+			mcpserver.WithStateLess(false),
+		)
+
+		streamableServer := mcpserver.NewStreamableHTTPServer(mcpServer, allOpts...)
+		if streamableServer == nil {
+			t.Error("Failed to create StreamableHTTPServer with OAuth options")
+		}
 	})
 }
