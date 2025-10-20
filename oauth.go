@@ -205,6 +205,11 @@ func (s *Server) GetHTTPServerOptions() []mcpserver.StreamableHTTPOption {
 	}
 }
 
+type oauthErrorResponse struct {
+	Error            string `json:"error"`
+	ErrorDescription string `json:"error_description"`
+}
+
 // WrapHandler wraps an http.Handler with OAuth Bearer token validation.
 // It checks for a valid Authorization header before delegating to the wrapped handler.
 // If the token is missing or invalid, returns 401 with WWW-Authenticate headers
@@ -229,12 +234,10 @@ func (s *Server) WrapHandler(next http.Handler) http.Handler {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 
-			errorResponse := map[string]string{
-				"error":             "invalid_token",
-				"error_description": "Missing or invalid access token",
-			}
-			encoder := json.NewEncoder(w)
-			if err := encoder.Encode(errorResponse); err != nil {
+			if err := json.NewEncoder(w).Encode(oauthErrorResponse{
+				Error:            "invalid_token",
+				ErrorDescription: "Missing or invalid access token",
+			}); err != nil {
 				s.logger.Error("Error encoding OAuth error response: %v", err)
 			}
 			return
