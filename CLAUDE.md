@@ -53,7 +53,7 @@ make vuln
 
 ### Integration Flow
 
-```
+```text
 1. HTTP request with "Authorization: Bearer <token>" header
 2. CreateHTTPContextFunc() extracts token → adds to context via WithOAuthToken()
 3. OAuth middleware (Server.Middleware()) validates token:
@@ -83,9 +83,11 @@ The codebase has extensive test coverage across multiple scenarios:
 - **provider/provider_test.go** - Token validator tests
 
 Run single test:
+
 ```bash
 go test -v -run TestName ./...
 ```
+
 
 ## Important Notes
 

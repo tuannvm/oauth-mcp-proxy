@@ -166,6 +166,12 @@ func (v *OIDCValidator) Initialize(cfg *Config) error {
 		return fmt.Errorf("OIDC audience is required for OIDC provider")
 	}
 
+	v.logger = cfg.Logger
+	if v.logger == nil {
+		v.logger = &noOpLogger{}
+	}
+	v.audience = cfg.Audience
+
 	// Use standard library context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -207,7 +213,6 @@ func (v *OIDCValidator) Initialize(cfg *Config) error {
 
 	v.provider = provider
 	v.verifier = verifier
-	v.audience = cfg.Audience
 	return nil
 }
 
@@ -331,3 +336,11 @@ func getStringClaim(claims jwt.MapClaims, key string) string {
 	}
 	return ""
 }
+
+// noOpLogger is a no-op logger used when cfg.Logger is nil
+type noOpLogger struct{}
+
+func (l *noOpLogger) Debug(msg string, args ...interface{}) {}
+func (l *noOpLogger) Info(msg string, args ...interface{})  {}
+func (l *noOpLogger) Warn(msg string, args ...interface{})  {}
+func (l *noOpLogger) Error(msg string, args ...interface{}) {}
