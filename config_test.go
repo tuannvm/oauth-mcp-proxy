@@ -7,11 +7,11 @@ import (
 
 func TestConfigBuilder(t *testing.T) {
 	tests := []struct {
-		name        string
-		buildFunc   func() (*Config, error)
-		wantErr     bool
-		wantURL     string
-		wantMode    string
+		name         string
+		buildFunc    func() (*Config, error)
+		wantErr      bool
+		wantURL      string
+		wantMode     string
 		wantProvider string
 	}{
 		{
@@ -25,8 +25,8 @@ func TestConfigBuilder(t *testing.T) {
 					WithPort("8080").
 					Build()
 			},
-			wantURL:     "http://example.com:8080",
-			wantMode:    "native",
+			wantURL:      "http://example.com:8080",
+			wantMode:     "native",
 			wantProvider: "hmac",
 		},
 		{
@@ -41,8 +41,8 @@ func TestConfigBuilder(t *testing.T) {
 					WithTLS(true).
 					Build()
 			},
-			wantURL:     "https://secure.example.com:443",
-			wantMode:    "native",
+			wantURL:      "https://secure.example.com:443",
+			wantMode:     "native",
 			wantProvider: "okta",
 		},
 		{
@@ -57,8 +57,8 @@ func TestConfigBuilder(t *testing.T) {
 					WithServerURL("https://override.example.com:9000").
 					Build()
 			},
-			wantURL:     "https://override.example.com:9000",
-			wantMode:    "native",
+			wantURL:      "https://override.example.com:9000",
+			wantMode:     "native",
 			wantProvider: "hmac",
 		},
 		{
@@ -76,8 +76,8 @@ func TestConfigBuilder(t *testing.T) {
 					WithPort("8080").
 					Build()
 			},
-			wantURL:     "http://localhost:8080",
-			wantMode:    "proxy",
+			wantURL:      "http://localhost:8080",
+			wantMode:     "proxy",
 			wantProvider: "okta",
 		},
 		{
