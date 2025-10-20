@@ -273,11 +273,7 @@ func FromEnv() (*Config, error) {
 
 	host := getEnv("MCP_HOST", "localhost")
 	port := getEnv("MCP_PORT", "8080")
-
-	useTLS := false
-	if getEnv("HTTPS_CERT_FILE", "") != "" && getEnv("HTTPS_KEY_FILE", "") != "" {
-		useTLS = true
-	}
+	useTLS := getEnv("HTTPS_CERT_FILE", "") != "" && getEnv("HTTPS_KEY_FILE", "") != ""
 
 	if serverURL == "" {
 		serverURL = AutoDetectServerURL(host, port, useTLS)

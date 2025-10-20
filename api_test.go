@@ -267,7 +267,7 @@ func TestServerWrapHandler(t *testing.T) {
 
 		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("protected resource"))
+			_, _ = w.Write([]byte("protected resource"))
 		})
 
 		wrappedHandler := server.WrapHandler(handler)
