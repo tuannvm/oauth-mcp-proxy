@@ -80,6 +80,7 @@ func NewServer(cfg *Config) (*Server, error) {
 //   - /oauth/authorize - Authorization endpoint (proxy mode)
 //   - /oauth/callback - Callback handler (proxy mode)
 //   - /oauth/token - Token exchange (proxy mode)
+//   - /oauth/register - Dynamic client registration
 //
 // Note: WithOAuth() calls this automatically. Only call directly if using
 // NewServer() for advanced use cases.
@@ -90,6 +91,7 @@ func (s *Server) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/oauth/authorize", s.handler.HandleAuthorize)
 	mux.HandleFunc("/oauth/callback", s.handler.HandleCallback)
 	mux.HandleFunc("/oauth/token", s.handler.HandleToken)
+	mux.HandleFunc("/oauth/register", s.handler.HandleRegister)
 	mux.HandleFunc("/.well-known/openid-configuration", s.handler.HandleOIDCDiscovery)
 }
 
