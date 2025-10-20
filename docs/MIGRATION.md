@@ -7,6 +7,7 @@ This guide helps mcp-trino users migrate to the standalone oauth-mcp-proxy libra
 ## Why Migrate?
 
 **Benefits:**
+
 - ✅ Latest OAuth improvements and security fixes
 - ✅ Reusable across any MCP server (not Trino-specific)
 - ✅ Better API (`WithOAuth()` vs manual setup)
@@ -23,11 +24,13 @@ This guide helps mcp-trino users migrate to the standalone oauth-mcp-proxy libra
 ### Import Path
 
 **Before (mcp-trino):**
+
 ```go
 import "github.com/tuannvm/mcp-trino/internal/oauth"
 ```
 
 **After (oauth-mcp-proxy):**
+
 ```go
 import oauth "github.com/tuannvm/oauth-mcp-proxy"
 ```
@@ -60,6 +63,7 @@ go get github.com/tuannvm/oauth-mcp-proxy
 ### Step 3: Migrate Configuration
 
 **Before (mcp-trino):**
+
 ```go
 // Old internal API
 validator, err := oauth.SetupOAuth(&oauth.Config{
@@ -76,11 +80,12 @@ mcpServer := server.NewMCPServer("Trino", "1.0.0",
 ```
 
 **After (oauth-mcp-proxy):**
+
 ```go
 // New simple API
 mux := http.NewServeMux()
 
-oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{
+_, oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{
     Provider: "okta",
     Issuer:   "https://company.okta.com",
     Audience: "api://trino-server",
@@ -90,6 +95,7 @@ mcpServer := server.NewMCPServer("Trino", "1.0.0", oauthOption)
 ```
 
 **Differences:**
+
 - ✅ Simpler: 1 function call vs 3
 - ✅ `mux` passed to WithOAuth (auto-registers endpoints)
 - ✅ Returns `mcpserver.ServerOption` directly
@@ -98,6 +104,7 @@ mcpServer := server.NewMCPServer("Trino", "1.0.0", oauthOption)
 ### Step 4: Update HTTP Context Setup
 
 **Before (mcp-trino):**
+
 ```go
 // Manual token extraction
 oauthContextFunc := func(ctx context.Context, r *http.Request) context.Context {
@@ -116,6 +123,7 @@ streamableServer := mcpserver.NewStreamableHTTPServer(
 ```
 
 **After (oauth-mcp-proxy):**
+
 ```go
 // Use helper function
 streamableServer := mcpserver.NewStreamableHTTPServer(
@@ -129,6 +137,7 @@ streamableServer := mcpserver.NewStreamableHTTPServer(
 ### Step 5: Update User Context Access
 
 **Before & After (same):**
+
 ```go
 func toolHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
     user, ok := oauth.GetUserFromContext(ctx)
@@ -211,7 +220,7 @@ func main() {
     mux := http.NewServeMux()
 
     // Step 1: Enable OAuth (one call!)
-    oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{
+    _, oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{
         Provider: "okta",
         Issuer:   "https://company.okta.com",
         Audience: "api://trino",
@@ -298,7 +307,7 @@ No need to set `Mode` explicitly unless you want to.
 // validator, err := trinoOAuth.SetupOAuth(...)
 
 // New oauth-mcp-proxy
-oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{...})
+_, oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{...})
 ```
 
 ### 2. Test Locally
@@ -327,7 +336,7 @@ If issues occur:
 
 ```go
 // Comment out new code
-// oauthOption, err := oauth.WithOAuth(...)
+// _, oauthOption, err := oauth.WithOAuth(...)
 
 // Uncomment old code
 validator, err := trinoOAuth.SetupOAuth(...)
@@ -344,6 +353,7 @@ Redeploy. OAuth logic is identical, just packaged differently.
 ## Support
 
 Questions? Check:
+
 - [README.md](../README.md) - Quick start
 - [Provider Guides](./providers/) - Provider-specific setup
 - [SECURITY.md](./SECURITY.md) - Security best practices

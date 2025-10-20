@@ -7,6 +7,7 @@ How MCP clients discover and use OAuth authentication with your server.
 ## Overview
 
 When you enable OAuth on your MCP server, clients need to know:
+
 1. **How to authenticate** - OAuth provider details
 2. **Where to get tokens** - Authorization endpoints
 3. **How to send tokens** - Authorization header format
@@ -40,6 +41,7 @@ sequenceDiagram
 ```
 
 **Clients that support auto-discovery:**
+
 - Claude Desktop (native OAuth)
 - Claude Code (native OAuth)
 - MCP Inspector (browser OAuth)
@@ -59,6 +61,7 @@ sequenceDiagram
 ```
 
 That's it! Claude Desktop will:
+
 1. Fetch `https://your-server.com/.well-known/oauth-authorization-server`
 2. Discover OAuth issuer and endpoints
 3. Guide user through OAuth flow
@@ -86,6 +89,7 @@ For clients without auto-discovery:
 ```
 
 **How to get token:**
+
 - HMAC: Generate using `jwt.NewWithClaims()` (see [HMAC Guide](providers/HMAC.md))
 - OIDC: Use OAuth provider's token endpoint or admin tools
 
@@ -122,6 +126,7 @@ GET https://your-server.com/.well-known/oauth-authorization-server
 ```
 
 **Returns:**
+
 ```json
 {
   "issuer": "https://your-server.com",
@@ -156,6 +161,7 @@ Tells clients this is an OAuth-protected resource.
 ### Native Mode
 
 **Server config:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     Provider: "okta",
@@ -165,12 +171,14 @@ oauth.WithOAuth(mux, &oauth.Config{
 ```
 
 **Client discovers:**
+
 - Metadata endpoints return Okta URLs
 - Client authenticates directly with Okta
 - Client sends Okta token to your server
 - Your server validates token against Okta
 
 **Client config (auto-discovery):**
+
 ```json
 {
   "mcpServers": {
@@ -186,6 +194,7 @@ Client fetches metadata, sees Okta issuer, handles OAuth with Okta directly.
 ### Proxy Mode
 
 **Server config:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     Provider:     "okta",
@@ -197,12 +206,14 @@ oauth.WithOAuth(mux, &oauth.Config{
 ```
 
 **Client discovers:**
+
 - Metadata endpoints return YOUR server URLs (not Okta)
 - Client authenticates through your server
 - Your server proxies to Okta
 - Client sends token from your server
 
 **Client config (auto-discovery):**
+
 ```json
 {
   "mcpServers": {
@@ -298,6 +309,7 @@ curl -X POST https://your-server.com/mcp \
 ### 3. Test Client Auto-Discovery
 
 Add server to Claude Desktop and verify:
+
 - OAuth flow initiates automatically
 - No manual token configuration needed
 - Authentication works end-to-end
@@ -309,6 +321,7 @@ Add server to Claude Desktop and verify:
 ### Client Can't Discover OAuth
 
 **Check:**
+
 ```bash
 curl https://your-server.com/.well-known/oauth-authorization-server
 # Should return 200 with JSON metadata
@@ -319,6 +332,7 @@ If 404, verify `WithOAuth()` was called and server is running.
 ### Client Shows "Authentication Required"
 
 **Check:**
+
 1. Client is sending `Authorization: Bearer <token>` header
 2. Token is valid (not expired)
 3. Token's `iss` and `aud` match server config
@@ -329,10 +343,12 @@ Enable verbose logging in client if available.
 ### OAuth Flow Fails
 
 **Native mode:**
+
 - Check client can reach OAuth provider directly
 - Verify provider's redirect URIs include client's callback
 
 **Proxy mode:**
+
 - Check client can reach your server's /oauth endpoints
 - Verify your server's redirect URIs configured in provider
 
@@ -343,11 +359,13 @@ Enable verbose logging in client if available.
 ### Claude Desktop
 
 **Location:**
+
 - macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - Linux: `~/.config/Claude/claude_desktop_config.json`
 
 **Config:**
+
 ```json
 {
   "mcpServers": {
@@ -363,6 +381,7 @@ Claude Desktop auto-discovers OAuth via metadata endpoints.
 ### Cursor / Other MCP Clients
 
 **With auto-discovery:**
+
 ```json
 {
   "mcpServers": {
@@ -374,6 +393,7 @@ Claude Desktop auto-discovers OAuth via metadata endpoints.
 ```
 
 **With manual token:**
+
 ```json
 {
   "mcpServers": {

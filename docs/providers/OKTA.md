@@ -7,6 +7,7 @@ Okta provider uses OIDC/JWKS for JWT validation. Ideal for enterprise SSO, user 
 ## When to Use
 
 ✅ **Good for:**
+
 - Enterprise SSO integration
 - User authentication with existing Okta org
 - Production applications
@@ -30,19 +31,23 @@ Okta provider uses OIDC/JWKS for JWT validation. Ideal for enterprise SSO, user 
 ### 2. Configure Application
 
 **General Settings:**
+
 - **App integration name:** Your MCP Server
 - **Grant type:**
   - ✅ Authorization Code
   - ✅ Refresh Token (optional)
 
 **Sign-in redirect URIs:**
+
 - Native mode: Managed by client (e.g., Claude Desktop)
 - Proxy mode: `https://your-mcp-server.com/oauth/callback`
 
 **Sign-out redirect URIs:** (optional)
+
 - Add if you support logout
 
 **Controlled access:**
+
 - Select who can use this application
 
 **Save** the application.
@@ -189,15 +194,18 @@ These are automatically requested when using proxy mode.
 ## Troubleshooting
 
 ### "Failed to initialize OIDC provider"
+
 - Check: Issuer URL is correct (no trailing slash)
 - Check: Server can reach Okta (network/firewall)
 - Check: Issuer serves `.well-known/openid-configuration`
 
 ### "Invalid audience"
+
 - Check: Token `aud` claim matches `Config.Audience`
 - Check: Okta app/auth server configured to include correct audience
 
 ### "Token verification failed"
+
 - Check: Token not expired
 - Check: Token signed by Okta (check `iss` claim)
 - Check: Issuer URL matches exactly

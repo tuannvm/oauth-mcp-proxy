@@ -32,6 +32,76 @@ type Config struct {
 
 ---
 
+## Configuration Methods
+
+### Direct Config
+
+Create Config struct directly:
+
+```go
+cfg := &oauth.Config{
+    Provider:  "okta",
+    Issuer:    "https://company.okta.com",
+    Audience:  "api://my-server",
+    ServerURL: "https://my-server.com",
+}
+_, oauthOption, _ := oauth.WithOAuth(mux, cfg)
+```
+
+### ConfigBuilder (v0.2.0+)
+
+Use fluent API with auto-generated ServerURL:
+
+```go
+cfg, _ := oauth.NewConfigBuilder().
+    WithProvider("okta").
+    WithIssuer("https://company.okta.com").
+    WithAudience("api://my-server").
+    WithHost("my-server.com").
+    WithPort("443").
+    WithTLS(true).  // Auto-generates https://my-server.com:443
+    Build()
+```
+
+**Benefits:**
+
+- Auto-generates ServerURL from host/port/TLS
+- Validates config during Build()
+- Cleaner, more readable code
+
+### FromEnv() (v0.2.0+)
+
+Read configuration from environment variables:
+
+```go
+cfg, _ := oauth.FromEnv()
+_, oauthOption, _ := oauth.WithOAuth(mux, cfg)
+```
+
+**Environment variables:**
+
+- `OAUTH_PROVIDER` - Provider name
+- `OAUTH_MODE` - OAuth mode (optional)
+- `OIDC_ISSUER` - Issuer URL
+- `OIDC_AUDIENCE` - Audience
+- `OIDC_CLIENT_ID` - Client ID (proxy mode)
+- `OIDC_CLIENT_SECRET` - Client secret (proxy mode)
+- `OAUTH_REDIRECT_URIS` - Redirect URIs (proxy mode)
+- `JWT_SECRET` - HMAC secret
+- `MCP_URL` - Full server URL (or auto-generated from below)
+- `MCP_HOST` - Server host (default: localhost)
+- `MCP_PORT` - Server port (default: 8080)
+- `HTTPS_CERT_FILE` - TLS cert file (enables HTTPS)
+- `HTTPS_KEY_FILE` - TLS key file (enables HTTPS)
+
+**Benefits:**
+
+- 12-factor app compliant
+- Easy Kubernetes/Docker deployment
+- No code changes for config updates
+
+---
+
 ## Required Fields
 
 ### Provider
@@ -57,6 +127,7 @@ Provider: "okta"  // Use Okta OIDC validation
 The audience must match exactly. This prevents token reuse across services.
 
 **Examples:**
+
 ```go
 // Custom audience
 Audience: "api://my-mcp-server"
@@ -83,6 +154,7 @@ Audience: "12345678-1234-1234-1234-123456789012"
 The OAuth provider's issuer URL. Must match token's `iss` claim exactly.
 
 **Examples:**
+
 ```go
 // Okta
 Issuer: "https://yourcompany.okta.com"
@@ -98,6 +170,7 @@ Issuer: "https://login.microsoftonline.com/common/v2.0"
 ```
 
 **Important:**
+
 - No trailing slash
 - Must serve `/.well-known/openid-configuration`
 - HTTPS required
@@ -111,6 +184,7 @@ Issuer: "https://login.microsoftonline.com/common/v2.0"
 Shared secret for HMAC-SHA256 token validation.
 
 **Examples:**
+
 ```go
 // From environment (recommended)
 JWTSecret: []byte(os.Getenv("JWT_SECRET"))
@@ -139,6 +213,7 @@ JWTSecret: secret
 Determines whether client or server handles OAuth flow.
 
 **Auto-detection:**
+
 ```go
 // If ClientID is provided → proxy mode
 // If ClientID is empty → native mode
@@ -146,6 +221,7 @@ Mode: ""  // Let library auto-detect
 ```
 
 **Explicit:**
+
 ```go
 Mode: "native"  // Client does OAuth
 Mode: "proxy"   // Server proxies OAuth
@@ -159,6 +235,7 @@ Mode: "proxy"   // Server proxies OAuth
 **Server:** Only validates tokens (no OAuth endpoints used)
 
 **Config:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     Mode:     "native",  // Or omit (auto-detected)
@@ -179,6 +256,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 **Server:** Full OAuth authorization server functionality
 
 **Config:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     Mode:         "proxy",  // Or omit (auto-detected from ClientID)
@@ -215,6 +293,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 **Purpose:** OAuth client identifier from provider
 
 Obtained from your OAuth provider:
+
 - Okta: Application → General → Client ID
 - Google: Cloud Console → Credentials → OAuth 2.0 Client ID
 - Azure: App registrations → Application (client) ID
@@ -232,6 +311,7 @@ ClientID: "12345678-1234-1234-1234-123456789012"  // Azure
 **Purpose:** OAuth client secret for token exchange
 
 **Security:**
+
 ```go
 // ✅ From environment
 ClientSecret: os.Getenv("OAUTH_CLIENT_SECRET")
@@ -249,6 +329,7 @@ ClientSecret: "abc123..."  // SECURITY VIOLATION
 **Purpose:** Your MCP server's public URL
 
 Used for:
+
 - OAuth metadata endpoints (issuer URL)
 - Redirect URI construction
 - Endpoint URL generation
@@ -260,6 +341,7 @@ ServerURL: "http://localhost:8080"                // Local testing
 ```
 
 **Requirements:**
+
 - HTTPS in production
 - No trailing slash
 - Publicly accessible (for OAuth provider callbacks)
@@ -271,6 +353,7 @@ ServerURL: "http://localhost:8080"                // Local testing
 **Purpose:** OAuth redirect URI validation
 
 **Single URI (Fixed Redirect):**
+
 ```go
 RedirectURIs: "https://your-server.com/oauth/callback"
 ```
@@ -278,6 +361,7 @@ RedirectURIs: "https://your-server.com/oauth/callback"
 Server uses this URI with provider. For security, client redirects must be localhost only.
 
 **Multiple URIs (Allowlist):**
+
 ```go
 RedirectURIs: "https://app1.com/callback,https://app2.com/callback,https://app3.com/callback"
 ```
@@ -285,6 +369,7 @@ RedirectURIs: "https://app1.com/callback,https://app2.com/callback,https://app3.
 Comma-separated list. Client's redirect_uri must exactly match one of these.
 
 **Security:**
+
 - HTTPS required for non-localhost
 - No wildcards allowed
 - Exact string match
@@ -314,6 +399,7 @@ type Logger interface {
 **Examples:**
 
 **Zap:**
+
 ```go
 type ZapLogger struct{ logger *zap.Logger }
 
@@ -329,6 +415,7 @@ cfg := &oauth.Config{
 ```
 
 **Logrus:**
+
 ```go
 type LogrusLogger struct{ logger *logrus.Logger }
 
@@ -343,6 +430,7 @@ cfg := &oauth.Config{
 ```
 
 **Default behavior:**
+
 ```
 [INFO] OAuth2: Authorization request - client_id: ...
 [WARN] SECURITY: Invalid redirect URI ...
@@ -358,7 +446,7 @@ cfg := &oauth.Config{
 Configuration is validated when calling `WithOAuth()` or `NewServer()`:
 
 ```go
-oauthOption, err := oauth.WithOAuth(mux, cfg)
+_, oauthOption, err := oauth.WithOAuth(mux, cfg)
 if err != nil {
     // err describes what's wrong:
     // - "provider is required"
@@ -372,16 +460,19 @@ if err != nil {
 ### Validation Rules
 
 **All modes:**
+
 - Provider must be one of: hmac, okta, google, azure
 - Audience is required
 - Provider-specific fields validated (JWTSecret for HMAC, Issuer for OIDC)
 
 **Proxy mode:**
+
 - ClientID required
 - ServerURL required
 - RedirectURIs required
 
 **Native mode:**
+
 - ClientID, ServerURL, RedirectURIs optional (ignored if provided)
 
 ---

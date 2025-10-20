@@ -13,12 +13,14 @@ Common issues and solutions when using oauth-mcp-proxy.
 **Solutions:**
 
 1. **Check Authorization header present:**
+
 ```bash
 # Make sure you're sending the header
 curl -H "Authorization: Bearer <token>" https://server.com/mcp
 ```
 
 2. **Verify CreateHTTPContextFunc configured:**
+
 ```go
 streamable := mcpserver.NewStreamableHTTPServer(
     mcpServer,
@@ -27,6 +29,7 @@ streamable := mcpserver.NewStreamableHTTPServer(
 ```
 
 3. **Check header format:**
+
 ```
 ✅ Authorization: Bearer eyJhbGc...
 ❌ Authorization: eyJhbGc...       (missing "Bearer ")
@@ -42,6 +45,7 @@ streamable := mcpserver.NewStreamableHTTPServer(
 **Check:**
 
 1. **Token not expired:**
+
 ```bash
 # Decode JWT (without validation) to check expiration
 echo "<token>" | cut -d. -f2 | base64 -d 2>/dev/null | jq .exp
@@ -50,6 +54,7 @@ date +%s
 ```
 
 2. **Issuer matches:**
+
 ```go
 // Token's "iss" claim must match Config.Issuer exactly
 Config.Issuer: "https://company.okta.com"
@@ -57,6 +62,7 @@ Token.iss:     "https://company.okta.com"  // Must match!
 ```
 
 3. **Audience matches:**
+
 ```go
 // Token's "aud" claim must match Config.Audience exactly
 Config.Audience: "api://my-server"
@@ -64,6 +70,7 @@ Token.aud:       "api://my-server"  // Must match!
 ```
 
 4. **Signature valid (HMAC):**
+
 ```go
 // Secret must match the one used to sign token
 Config.JWTSecret: []byte("secret-key-123")
@@ -71,12 +78,14 @@ Config.JWTSecret: []byte("secret-key-123")
 ```
 
 5. **Provider reachable (OIDC):**
+
 ```bash
 # Verify OIDC discovery works
 curl https://yourcompany.okta.com/.well-known/openid-configuration
 ```
 
 **Debug:**
+
 ```go
 // Enable debug logging
 type DebugLogger struct{}
@@ -99,6 +108,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 **Cause:** Missing or empty Provider field
 
 **Solution:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     Provider: "okta",  // Must be set!
@@ -113,6 +123,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 **Cause:** Using HMAC provider without JWTSecret
 
 **Solution:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     Provider:  "hmac",
@@ -127,6 +138,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 **Cause:** Using Okta/Google/Azure without Issuer
 
 **Solution:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     Provider: "okta",
@@ -141,6 +153,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 **Cause:** Mode is "proxy" but ClientID not provided
 
 **Solution:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     Mode:     "proxy",
@@ -161,6 +174,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 **Check:**
 
 1. **Issuer URL correct:**
+
 ```go
 // ✅ Correct
 Issuer: "https://company.okta.com"
@@ -172,16 +186,19 @@ Issuer: "http://company.okta.com"     // Must be HTTPS
 ```
 
 2. **Network connectivity:**
+
 ```bash
 # Verify server can reach provider
 curl https://yourcompany.okta.com/.well-known/openid-configuration
 ```
 
 3. **Firewall/proxy:**
+
 - Check corporate firewall allows outbound HTTPS
 - Check proxy settings if behind corporate proxy
 
 **Debug:**
+
 ```bash
 # Test OIDC discovery manually
 curl -v https://yourcompany.okta.com/.well-known/openid-configuration
@@ -208,6 +225,7 @@ curl -v https://yourcompany.okta.com/.well-known/openid-configuration
 **Why:** Prevents open redirect attacks in fixed redirect mode.
 
 **Solution:** Use allowlist mode if you need non-localhost redirects:
+
 ```go
 RedirectURIs: "https://app1.com/cb,https://app2.com/cb"  // Allowlist
 ```
@@ -221,16 +239,19 @@ RedirectURIs: "https://app1.com/cb,https://app2.com/cb"  // Allowlist
 **Solutions:**
 
 **Okta:**
+
 1. Go to Applications → Your App → General
 2. Add to "Sign-in redirect URIs"
 3. Must match exactly (including trailing slash if present)
 
 **Google:**
+
 1. Cloud Console → Credentials → OAuth 2.0 Client
 2. Add to "Authorized redirect URIs"
 3. Exact match required
 
 **Azure:**
+
 1. App registrations → Your App → Authentication
 2. Add to "Redirect URIs"
 3. Must match exactly
@@ -246,6 +267,7 @@ RedirectURIs: "https://app1.com/cb,https://app2.com/cb"  // Allowlist
 **Check:**
 
 1. **Cache logs:**
+
 ```
 [INFO] Using cached authentication for tool: hello (user: john)
 ```
@@ -255,11 +277,13 @@ RedirectURIs: "https://app1.com/cb,https://app2.com/cb"  // Allowlist
 3. **Cache scope:** Per Server instance
 
 **Debug:**
+
 - Different Server instances = different caches
 - Token modified between requests = new cache entry
 - Token expired = cache miss
 
 **Metrics:**
+
 ```go
 // Check if using cached validation
 // Look for "Using cached authentication" in logs
@@ -274,6 +298,7 @@ RedirectURIs: "https://app1.com/cb,https://app2.com/cb"  // Allowlist
 **Cause:** Usually missing logger in test code or direct handler creation
 
 **Solution:**
+
 ```go
 // ✅ Always use WithOAuth() or NewServer()
 oauthOption, _ := oauth.WithOAuth(mux, cfg)
@@ -297,27 +322,32 @@ handler := &OAuth2Handler{
 **Check:**
 
 1. **Authorization code valid:**
+
 - Code must be unused (single-use only)
 - Code must not be expired (typically 10 minutes)
 
 2. **PKCE parameters match:**
+
 ```go
 // code_challenge in /authorize must match code_verifier in /token
 // hash(code_verifier) == code_challenge
 ```
 
 3. **Redirect URI matches:**
+
 ```go
 // redirect_uri in /token must match the one used in /authorize
 ```
 
 4. **Client credentials valid:**
+
 ```go
 ClientID: "...",      // Must match OAuth provider
 ClientSecret: "...",  // Must be current (not rotated)
 ```
 
 **Debug:**
+
 - Check OAuth provider logs (Okta/Google/Azure admin consoles)
 - Look for specific error codes in provider response
 
@@ -328,6 +358,7 @@ ClientSecret: "...",  // Must be current (not rotated)
 ### Slow Authentication
 
 **Expected latency:**
+
 - Cache hit: <5ms
 - Cache miss (HMAC): <10ms
 - Cache miss (OIDC): <100ms (network call to provider)
@@ -335,15 +366,18 @@ ClientSecret: "...",  // Must be current (not rotated)
 **If slower:**
 
 1. **OIDC discovery slow:**
+
 - First request does OIDC discovery (fetches `.well-known/openid-configuration`)
 - Cached after first request
 - Network latency to provider affects first request
 
 2. **JWKS fetch slow:**
+
 - OIDC validator fetches public keys on initialization
 - Check network latency to OAuth provider
 
 **Solutions:**
+
 - Warm up on server start (make a test validation call)
 - Check network connectivity to OAuth provider
 - Consider caching OIDC discovery (future enhancement)
@@ -357,6 +391,7 @@ ClientSecret: "...",  // Must be current (not rotated)
 **Common causes:**
 
 1. **HTTPS not configured:**
+
 ```go
 // ❌ Development (http)
 http.ListenAndServe(":8080", mux)
@@ -366,17 +401,20 @@ http.ListenAndServeTLS(":443", "cert.pem", "key.pem", mux)
 ```
 
 2. **Secrets not in environment:**
+
 ```bash
 # Check environment variables are set
 echo $OAUTH_CLIENT_SECRET
 ```
 
 3. **Provider can't reach callback URL:**
+
 - ServerURL must be publicly accessible
 - Firewall must allow inbound HTTPS
 - DNS must resolve correctly
 
 4. **Redirect URI mismatch:**
+
 - Localhost works in dev, but production URL different
 - Update OAuth provider redirect URIs for production domain
 
@@ -473,11 +511,13 @@ googleOption, _ := oauth.WithOAuth(mux, &oauth.Config{Provider: "google", ...})
 ### Custom Token Claims
 
 Currently, oauth-mcp-proxy extracts:
+
 - `sub` → User.Subject
 - `email` → User.Email
 - `preferred_username` → User.Username (fallback to email or sub)
 
 For custom claims, access the raw token:
+
 ```go
 // Get token string from context
 token, _ := oauth.GetOAuthToken(ctx)
