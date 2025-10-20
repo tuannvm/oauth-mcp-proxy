@@ -111,7 +111,7 @@ func myHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResul
 }
 ```
 
-**That's it!** Your MCP server now requires OAuth authentication.
+Your MCP server now requires OAuth authentication.
 
 ---
 
