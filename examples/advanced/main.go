@@ -69,7 +69,7 @@ func main() {
 
 		// Feature 5: GetStatusString - Human-readable OAuth status
 		useTLS := getEnv("HTTPS_CERT_FILE", "") != ""
-		fmt.Fprintf(w, `{"status":"ok","oauth":"%s"}`, oauthServer.GetStatusString(useTLS))
+		_, _ = fmt.Fprintf(w, `{"status":"ok","oauth":"%s"}`, oauthServer.GetStatusString(useTLS))
 	})
 
 	// Add OAuth-protected tools
