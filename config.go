@@ -151,3 +151,145 @@ func CreateOAuth2Handler(cfg *Config, version string, logger Logger) *OAuth2Hand
 	oauth2Config := NewOAuth2ConfigFromConfig(cfg, version)
 	return NewOAuth2Handler(oauth2Config, logger)
 }
+
+// ConfigBuilder provides a fluent API for constructing OAuth Config
+type ConfigBuilder struct {
+	config *Config
+	host   string
+	port   string
+	useTLS bool
+}
+
+// NewConfigBuilder creates a new ConfigBuilder
+func NewConfigBuilder() *ConfigBuilder {
+	return &ConfigBuilder{
+		config: &Config{},
+		host:   "localhost",
+		port:   "8080",
+	}
+}
+
+// WithMode sets the OAuth mode ("native" or "proxy")
+func (b *ConfigBuilder) WithMode(mode string) *ConfigBuilder {
+	b.config.Mode = mode
+	return b
+}
+
+// WithProvider sets the OAuth provider ("hmac", "okta", "google", "azure")
+func (b *ConfigBuilder) WithProvider(provider string) *ConfigBuilder {
+	b.config.Provider = provider
+	return b
+}
+
+// WithRedirectURIs sets the redirect URIs
+func (b *ConfigBuilder) WithRedirectURIs(uris string) *ConfigBuilder {
+	b.config.RedirectURIs = uris
+	return b
+}
+
+// WithIssuer sets the OIDC issuer
+func (b *ConfigBuilder) WithIssuer(issuer string) *ConfigBuilder {
+	b.config.Issuer = issuer
+	return b
+}
+
+// WithAudience sets the audience
+func (b *ConfigBuilder) WithAudience(audience string) *ConfigBuilder {
+	b.config.Audience = audience
+	return b
+}
+
+// WithClientID sets the client ID
+func (b *ConfigBuilder) WithClientID(clientID string) *ConfigBuilder {
+	b.config.ClientID = clientID
+	return b
+}
+
+// WithClientSecret sets the client secret
+func (b *ConfigBuilder) WithClientSecret(secret string) *ConfigBuilder {
+	b.config.ClientSecret = secret
+	return b
+}
+
+// WithJWTSecret sets the JWT secret
+func (b *ConfigBuilder) WithJWTSecret(secret []byte) *ConfigBuilder {
+	b.config.JWTSecret = secret
+	return b
+}
+
+// WithLogger sets the logger
+func (b *ConfigBuilder) WithLogger(logger Logger) *ConfigBuilder {
+	b.config.Logger = logger
+	return b
+}
+
+// WithServerURL sets the full server URL directly
+func (b *ConfigBuilder) WithServerURL(url string) *ConfigBuilder {
+	b.config.ServerURL = url
+	return b
+}
+
+// WithHost sets the server host (used to construct ServerURL if not set)
+func (b *ConfigBuilder) WithHost(host string) *ConfigBuilder {
+	b.host = host
+	return b
+}
+
+// WithPort sets the server port (used to construct ServerURL if not set)
+func (b *ConfigBuilder) WithPort(port string) *ConfigBuilder {
+	b.port = port
+	return b
+}
+
+// WithTLS enables HTTPS scheme (used to construct ServerURL if not set)
+func (b *ConfigBuilder) WithTLS(useTLS bool) *ConfigBuilder {
+	b.useTLS = useTLS
+	return b
+}
+
+// Build constructs and validates the Config
+func (b *ConfigBuilder) Build() (*Config, error) {
+	if b.config.ServerURL == "" {
+		b.config.ServerURL = AutoDetectServerURL(b.host, b.port, b.useTLS)
+	}
+	if err := b.config.Validate(); err != nil {
+		return nil, err
+	}
+	return b.config, nil
+}
+
+// AutoDetectServerURL constructs a server URL from components
+func AutoDetectServerURL(host, port string, useTLS bool) string {
+	scheme := "http"
+	if useTLS {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://%s:%s", scheme, host, port)
+}
+
+// FromEnv creates a Config from environment variables
+func FromEnv() (*Config, error) {
+	serverURL := getEnv("MCP_URL", "")
+
+	host := getEnv("MCP_HOST", "localhost")
+	port := getEnv("MCP_PORT", "8080")
+	useTLS := getEnv("HTTPS_CERT_FILE", "") != "" && getEnv("HTTPS_KEY_FILE", "") != ""
+
+	if serverURL == "" {
+		serverURL = AutoDetectServerURL(host, port, useTLS)
+	}
+
+	jwtSecret := getEnv("JWT_SECRET", "")
+
+	return NewConfigBuilder().
+		WithMode(getEnv("OAUTH_MODE", "")).
+		WithProvider(getEnv("OAUTH_PROVIDER", "")).
+		WithRedirectURIs(getEnv("OAUTH_REDIRECT_URIS", "")).
+		WithIssuer(getEnv("OIDC_ISSUER", "")).
+		WithAudience(getEnv("OIDC_AUDIENCE", "")).
+		WithClientID(getEnv("OIDC_CLIENT_ID", "")).
+		WithClientSecret(getEnv("OIDC_CLIENT_SECRET", "")).
+		WithServerURL(serverURL).
+		WithJWTSecret([]byte(jwtSecret)).
+		Build()
+}

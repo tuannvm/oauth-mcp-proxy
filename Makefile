@@ -23,6 +23,13 @@ test-coverage:
 # Run linting checks (same as CI)
 lint:
 	@echo "Running linters..."
+	@echo "Checking formatting..."
+	@UNFORMATTED=$$(gofmt -l .); \
+	if [ -n "$$UNFORMATTED" ]; then \
+		echo "Code is not formatted. Run 'make fmt' to fix:"; \
+		echo "$$UNFORMATTED"; \
+		exit 1; \
+	fi
 	@go mod tidy
 	@if ! git diff --quiet go.mod go.sum; then echo "go.mod or go.sum is not tidy, run 'go mod tidy'"; git diff go.mod go.sum; exit 1; fi
 	@if ! command -v golangci-lint &> /dev/null; then echo "Installing golangci-lint..." && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest; fi

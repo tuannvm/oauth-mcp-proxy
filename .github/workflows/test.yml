@@ -48,8 +48,8 @@ jobs:
 
       - name: Build examples
         run: |
-          cd examples/simple && go build
-          cd ../embedded && go build
+          go build ./examples/simple/main.go
+          go build ./examples/advanced/main.go
 
       - name: Run go vet
         run: go vet ./...

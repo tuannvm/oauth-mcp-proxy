@@ -7,12 +7,14 @@ HMAC provider uses shared secret JWT validation with HS256 algorithm. Best for t
 ## When to Use
 
 ✅ **Good for:**
+
 - Local development and testing
 - Service-to-service authentication
 - Simple deployments without external OAuth provider
 - Full control over token generation
 
 ❌ **Not ideal for:**
+
 - User authentication (no SSO)
 - Public-facing applications (secret distribution problem)
 - Multi-tenant applications

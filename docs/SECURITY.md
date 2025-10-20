@@ -9,6 +9,7 @@ This guide outlines security best practices when using oauth-mcp-proxy in produc
 ### Never Commit Secrets
 
 **❌ BAD:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     JWTSecret: []byte("my-secret-key"),  // Committed to git!
@@ -17,6 +18,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 ```
 
 **✅ GOOD:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     JWTSecret:    []byte(os.Getenv("JWT_SECRET")),
@@ -108,11 +110,13 @@ if len(secret) < 32 {
 ### Always Use TLS
 
 **❌ NEVER in production:**
+
 ```go
 http.ListenAndServe(":80", mux)  // Unencrypted!
 ```
 
 **✅ Production:**
+
 ```go
 http.ListenAndServeTLS(":443", "server.crt", "server.key", mux)
 ```
@@ -120,9 +124,11 @@ http.ListenAndServeTLS(":443", "server.crt", "server.key", mux)
 ### Get Certificates
 
 **Development:**
+
 - Use [mkcert](https://github.com/FiloSottile/mkcert) for local testing
 
 **Production:**
+
 - Use [Let's Encrypt](https://letsencrypt.org/) with [certbot](https://certbot.eff.org/)
 - Or your cloud provider's certificate service (AWS ACM, GCP Certificate Manager)
 
@@ -163,6 +169,7 @@ Token for Service A cannot be used on Service B (even with same issuer).
 ### Configuration
 
 **HMAC Provider:**
+
 ```go
 oauth.WithOAuth(mux, &oauth.Config{
     Provider: "hmac",
@@ -171,6 +178,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 ```
 
 **OIDC Providers:**
+
 - Okta: Configure custom audience in auth server claims
 - Google: Use Client ID as audience
 - Azure: Use Application ID or custom App ID URI
@@ -199,11 +207,13 @@ oauth.WithOAuth(mux, &oauth.Config{
 ### Token Expiration Recommendations
 
 **User tokens:**
+
 - Short-lived: 1 hour
 - Refresh tokens: 7-30 days
 - Reason: Limits damage if compromised
 
 **Service tokens:**
+
 - Medium-lived: 6-24 hours
 - Reason: Balance between security and token refresh overhead
 
@@ -224,6 +234,7 @@ token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 ### Automatic Protection
 
 oauth-mcp-proxy automatically supports PKCE (RFC 7636):
+
 - Prevents authorization code interception attacks
 - Required for public clients (mobile, desktop, browser)
 - Automatically validated when code_challenge provided
@@ -231,6 +242,7 @@ oauth-mcp-proxy automatically supports PKCE (RFC 7636):
 ### No Configuration Needed
 
 PKCE is automatically enabled when client provides:
+
 - `code_challenge` parameter in /oauth/authorize
 - `code_verifier` parameter in /oauth/token
 
@@ -263,6 +275,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 ```
 
 **Security checks:**
+
 - HTTPS required for non-localhost
 - No fragment allowed (per OAuth 2.0 spec)
 - Exact match validation (no wildcards)
@@ -274,14 +287,17 @@ oauth.WithOAuth(mux, &oauth.Config{
 ### Token Storage (Client Side)
 
 **Browser:**
+
 - Use `httpOnly` cookies or sessionStorage (NOT localStorage)
 - Clear on logout
 
 **Mobile/Desktop:**
+
 - Use OS keychain (macOS Keychain, Windows Credential Manager)
 - Never store in plain text files
 
 **CLI Tools:**
+
 - Store in encrypted config files
 - Use OS-specific secure storage when possible
 
@@ -294,6 +310,7 @@ curl -H "Authorization: Bearer <token>" https://server.com/mcp
 ```
 
 **Never:**
+
 - In URL query parameters (logged in web servers)
 - In cookies without httpOnly flag
 - In localStorage (XSS vulnerable)
@@ -307,26 +324,31 @@ curl -H "Authorization: Bearer <token>" https://server.com/mcp
 oauth-mcp-proxy logs (with custom logger or default):
 
 **Info Level:**
+
 - Authorization requests
 - Successful authentications
 - Token cache hits
 
 **Warn Level:**
+
 - Security violations (invalid redirects)
 - Configuration issues
 
 **Error Level:**
+
 - Token validation failures
 - OAuth provider errors
 
 ### What NOT to Log
 
 ✅ **Safe:** Token hash (SHA-256)
+
 ```
 INFO: Validating token (hash: a7bc40a987f35871...)
 ```
 
 ❌ **NEVER log:** Full tokens
+
 ```
 ERROR: Token xyz123... invalid  // SECURITY VIOLATION!
 ```

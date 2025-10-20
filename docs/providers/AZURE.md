@@ -7,6 +7,7 @@ Azure AD (Microsoft Entra ID) provider uses OIDC/JWKS for JWT validation. Ideal 
 ## When to Use
 
 ✅ **Good for:**
+
 - Microsoft 365 / Azure integration
 - Enterprise SSO with Azure AD
 - Applications for corporate Microsoft users
@@ -35,6 +36,7 @@ Azure AD (Microsoft Entra ID) provider uses OIDC/JWKS for JWT validation. Ideal 
 ### 2. Get Application (client) ID
 
 After registration, copy:
+
 - **Application (client) ID** - This is your Client ID
 - **Directory (tenant) ID** - Used in issuer URL
 
@@ -83,6 +85,7 @@ oauth.WithOAuth(mux, &oauth.Config{
 ```
 
 Replace `{tenant-id}` with:
+
 - Your Directory (tenant) ID, OR
 - `common` for multi-tenant apps
 - `organizations` for any Azure AD user
@@ -195,6 +198,7 @@ Azure AD ID tokens include:
 ```
 
 oauth-mcp-proxy extracts:
+
 - `sub` → User.Subject
 - `email` → User.Email
 - `preferred_username` or `email` → User.Username
@@ -220,15 +224,18 @@ Validates tokens from any Azure AD tenant. Extract tenant from `tid` claim if ne
 ## Troubleshooting
 
 ### "Failed to initialize OIDC provider"
+
 - Check: Issuer URL format correct (ends with `/v2.0`)
 - Check: Tenant ID is correct
 - Check: Network can reach `login.microsoftonline.com`
 
 ### "Invalid audience"
+
 - Check: `Config.Audience` matches token's `aud` claim
 - Check: Application ID URI configured in Azure if using custom audience
 
 ### "AADSTS errors" from Azure
+
 - `AADSTS50011`: Redirect URI mismatch - check Azure portal configuration
 - `AADSTS700016`: Application not found - check Client ID
 - `AADSTS7000215`: Invalid client secret - regenerate secret

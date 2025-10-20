@@ -7,6 +7,7 @@ Google provider uses OIDC/JWKS for JWT validation with Google's identity platfor
 ## When to Use
 
 ✅ **Good for:**
+
 - Google Workspace integration
 - Consumer applications with Google Sign-In
 - Applications requiring Google account authentication
@@ -48,10 +49,12 @@ Required before creating OAuth client:
 ### 3. Create OAuth Client ID
 
 **For Web Application (Proxy Mode):**
+
 - **Authorized JavaScript origins:** `https://your-server.com`
 - **Authorized redirect URIs:** `https://your-server.com/oauth/callback`
 
 **For Desktop App (Native Mode):**
+
 - No redirect URIs needed (client handles it)
 
 ### 4. Get Configuration Values
@@ -150,6 +153,7 @@ Google ID tokens include:
 ```
 
 oauth-mcp-proxy extracts:
+
 - `sub` → User.Subject
 - `email` → User.Email
 - `name` or `email` → User.Username
@@ -159,20 +163,24 @@ oauth-mcp-proxy extracts:
 ## Troubleshooting
 
 ### "Failed to initialize OIDC provider"
+
 - Check: Can reach `https://accounts.google.com/.well-known/openid-configuration`
 - Check: No typo in issuer URL (must be exact)
 
 ### "Invalid audience"
+
 - Google uses Client ID as audience
 - Check: `Config.Audience` matches your Client ID exactly
 - Example: `123456789.apps.googleusercontent.com`
 
 ### "redirect_uri_mismatch" error
+
 - Check: Redirect URI in Google Console matches `Config.RedirectURIs`
 - Must be exact match (including https://)
 - No localhost in production
 
 ### "invalid_client" error
+
 - Check: ClientID and ClientSecret correct
 - Check: Client type matches mode (Web app for proxy mode)
 
