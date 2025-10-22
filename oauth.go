@@ -279,8 +279,27 @@ func (s *Server) WrapHandler(next http.Handler) http.Handler {
 			return
 		}
 
-		contextFunc := CreateHTTPContextFunc()
-		ctx := contextFunc(r.Context(), r)
+		token := authHeader[7:]
+
+		user, err := s.ValidateTokenCached(r.Context(), token)
+		if err != nil {
+			s.logger.Info("OAuth: Token validation failed: %v", err)
+
+			metadataURL := s.GetProtectedResourceMetadataURL()
+			w.Header().Add("WWW-Authenticate", `Bearer realm="OAuth", error="invalid_token", error_description="Authentication failed"`)
+			w.Header().Add("WWW-Authenticate", fmt.Sprintf(`resource_metadata="%s"`, metadataURL))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+
+			_ = json.NewEncoder(w).Encode(oauthErrorResponse{
+				Error:            "invalid_token",
+				ErrorDescription: "Authentication failed",
+			})
+			return
+		}
+
+		ctx := WithOAuthToken(r.Context(), token)
+		ctx = WithUser(ctx, user)
 		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)
