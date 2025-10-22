@@ -1,12 +1,22 @@
 # OpenTelemetry Pattern Refactoring Plan
 
+## Implementation Status
+
+**Status**: ✅ **IMPLEMENTED** (2025-10-22)
+
+**Completion**: 82% (Core implementation complete, documentation pending)
+
+**See**: `docs/generic-implementation.md` for detailed checkpoint tracking.
+
+---
+
 ## Overview
 
 This document outlines the plan to refactor `oauth-mcp-proxy` to support both mark3labs/mcp-go and the official modelcontextprotocol/go-sdk using the OpenTelemetry pattern approach.
 
-## Current State
+## Original State
 
-The library currently supports only `github.com/mark3labs/mcp-go` (v0.41.1) with a single `WithOAuth()` function that returns `mcpserver.ServerOption`.
+The library originally supported only `github.com/mark3labs/mcp-go` (v0.41.1) with a single `WithOAuth()` function that returns `mcpserver.ServerOption`.
 
 ## Proposed Structure
 
@@ -229,11 +239,70 @@ Users have two migration paths:
 **Option 2: Migrate to Official SDK**
 Follow the official SDK migration guide in the new documentation.
 
+---
+
+## Implementation Results
+
+### What Was Implemented
+
+**Date**: 2025-10-22
+
+**Files Created:**
+- `cache.go` (68 lines) - Token cache logic
+- `context.go` (46 lines) - Context utilities (WithOAuthToken, GetOAuthToken, WithUser, GetUserFromContext)
+- `mark3labs/oauth.go` (45 lines) - mark3labs SDK adapter
+- `mark3labs/middleware.go` (38 lines) - mark3labs middleware implementation
+- `mcp/oauth.go` (76 lines) - Official SDK adapter
+- `verify_context_test.go` - Context propagation verification test
+
+**Files Modified:**
+- `oauth.go` - Added ValidateTokenCached() method
+- `middleware.go` - Removed extracted code to new files
+- `examples/simple/main.go` - Updated to use mark3labs package
+- `examples/advanced/main.go` - Updated to use mark3labs package
+- `go.mod` - Added official SDK v1.0.0
+
+**Verification:**
+- ✅ All existing tests pass
+- ✅ Both example apps build successfully
+- ✅ Official SDK context propagation verified
+- ✅ Core API contract implemented as designed
+
+### Implementation Time
+
+**Actual Time**: ~3 hours (vs 1 day estimated)
+
+Faster than estimated due to:
+- Clear verification phase eliminated uncertainty
+- Well-defined core API contract
+- Minimal changes needed to existing tests
+
+### Deviations from Plan
+
+1. **Checkpoint 3.4 Skipped**: Official SDK example not created (can be added later)
+2. **Checkpoint 4.2 & 4.3 Pending**: Adapter-specific integration tests deferred to follow-up PR
+3. **mcp/oauth.go**: Implemented custom HTTP handler wrapper instead of using WrapHandler for more explicit control
+
+### Outstanding Work
+
+- **Phase 5**: README.md updates (show both SDKs, migration guide)
+- **Phase 6**: Release preparation (CHANGELOG, version bump, PR)
+- **Future**: Comprehensive adapter integration tests
+
+---
+
 ## Open Questions
 
-1. Should we maintain v1 branch for bug fixes during transition period?
-2. How long should we support v1 before deprecating?
-3. Should we add compatibility shims in v2 to ease migration?
+### Answered (Based on Gemini 2.5 Pro Review)
+
+1. **Should we maintain v1 branch for bug fixes during transition period?**
+   - ✅ Yes. Create `v1` branch from last commit before refactor. Support critical security fixes for 3-6 months.
+
+2. **How long should we support v1 before deprecating?**
+   - ✅ 3-6 months for critical security fixes only. No new features.
+
+3. **Should we add compatibility shims in v2 to ease migration?**
+   - ❌ No. Major version bump is the time for clean break. Shims add complexity and confusion. Use clear migration guide instead.
 
 ## References
 

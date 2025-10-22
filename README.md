@@ -2,20 +2,36 @@
 
 OAuth 2.1 authentication library for Go MCP servers.
 
+**Supports both MCP SDKs:**
+- ✅ `mark3labs/mcp-go`
+- ✅ `modelcontextprotocol/go-sdk` (official)
+
 **One-time setup:** Configure provider + add `WithOAuth()` to your server.
 **Result:** All tools automatically protected with token validation and caching.
 
+### mark3labs/mcp-go
 ```go
-// Enable OAuth authentication
-_, oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
+import "github.com/tuannvm/oauth-mcp-proxy/mark3labs"
+
+_, oauthOption, _ := mark3labs.WithOAuth(mux, &oauth.Config{
     Provider: "okta",
     Issuer:   "https://your-company.okta.com",
     Audience: "api://your-mcp-server",
 })
 
-// All tools now require authentication
 mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
 ```
+
+### Official SDK
+```go
+import mcpoauth "github.com/tuannvm/oauth-mcp-proxy/mcp"
+
+mcpServer := mcp.NewServer(&mcp.Implementation{...}, nil)
+_, handler, _ := mcpoauth.WithOAuth(mux, cfg, mcpServer)
+http.ListenAndServe(":8080", handler)
+```
+
+> **📢 Migrating from v1.x?** See [MIGRATION-V2.md](./MIGRATION-V2.md) (2 line change, ~5 min)
 
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/tuannvm/oauth-mcp-proxy/test.yml?branch=main&label=Tests&logo=github)](https://github.com/tuannvm/oauth-mcp-proxy/actions/workflows/test.yml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/tuannvm/oauth-mcp-proxy?logo=go)](https://github.com/tuannvm/oauth-mcp-proxy/blob/main/go.mod)
@@ -28,6 +44,7 @@ mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
 
 ## Why Use This Library?
 
+- **Dual SDK support** - Works with both mark3labs and official SDKs
 - **Simple integration** - One `WithOAuth()` call protects all tools
 - **Zero per-tool config** - All tools automatically protected
 - **Fast token caching** - 5-min cache, <5ms validation
@@ -64,21 +81,26 @@ sequenceDiagram
 
 ## Quick Start
 
-### 1. Install
+### Using mark3labs/mcp-go
+
+#### 1. Install
 
 ```bash
 go get github.com/tuannvm/oauth-mcp-proxy
 ```
 
-### 2. Add to Your Server
+#### 2. Add to Your Server
 
 ```go
-import oauth "github.com/tuannvm/oauth-mcp-proxy"
+import (
+    oauth "github.com/tuannvm/oauth-mcp-proxy"
+    "github.com/tuannvm/oauth-mcp-proxy/mark3labs"
+)
 
 mux := http.NewServeMux()
 
 // Enable OAuth (one time setup)
-_, oauthOption, _ := oauth.WithOAuth(mux, &oauth.Config{
+_, oauthOption, _ := mark3labs.WithOAuth(mux, &oauth.Config{
     Provider: "okta",                    // or "hmac", "google", "azure"
     Issuer:   "https://your-company.okta.com",
     Audience: "api://your-mcp-server",
@@ -99,7 +121,7 @@ streamable := mcpserver.NewStreamableHTTPServer(
 mux.Handle("/mcp", streamable)
 ```
 
-### 3. Access Authenticated User
+#### 3. Access Authenticated User
 
 ```go
 func myHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -109,6 +131,57 @@ func myHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResul
     }
     // Use user.Username, user.Email, user.Subject
 }
+```
+
+---
+
+### Using Official SDK
+
+#### 1. Install
+
+```bash
+go get github.com/modelcontextprotocol/go-sdk
+go get github.com/tuannvm/oauth-mcp-proxy
+```
+
+#### 2. Add to Your Server
+
+```go
+import (
+    "github.com/modelcontextprotocol/go-sdk/mcp"
+    oauth "github.com/tuannvm/oauth-mcp-proxy"
+    mcpoauth "github.com/tuannvm/oauth-mcp-proxy/mcp"
+)
+
+mux := http.NewServeMux()
+
+// Create MCP server
+mcpServer := mcp.NewServer(&mcp.Implementation{
+    Name:    "my-server",
+    Version: "1.0.0",
+}, nil)
+
+// Add tools
+mcp.AddTool(mcpServer, &mcp.Tool{
+    Name: "greet",
+    Description: "Greet user",
+}, func(ctx context.Context, req *mcp.CallToolRequest, params *struct{}) (*mcp.CallToolResult, any, error) {
+    user, _ := oauth.GetUserFromContext(ctx)
+    return &mcp.CallToolResult{
+        Content: []mcp.Content{
+            &mcp.TextContent{Text: "Hello, " + user.Username},
+        },
+    }, nil, nil
+})
+
+// Add OAuth protection
+_, handler, _ := mcpoauth.WithOAuth(mux, &oauth.Config{
+    Provider: "okta",
+    Issuer:   "https://your-company.okta.com",
+    Audience: "api://your-mcp-server",
+}, mcpServer)
+
+http.ListenAndServe(":8080", handler)
 ```
 
 Your MCP server now requires OAuth authentication.
