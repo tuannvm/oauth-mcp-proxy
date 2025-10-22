@@ -15,10 +15,13 @@ import (
 
 func main() {
 	// Feature 1: ConfigBuilder - Auto-generates ServerURL from host/port/TLS
+	// Set these environment variables:
+	//   export OKTA_DOMAIN="dev-12345.okta.com"
+	//   export OKTA_AUDIENCE="api://my-mcp-server"
 	cfg, err := oauth.NewConfigBuilder().
 		WithProvider("okta").
-		WithIssuer("https://your-company.okta.com").
-		WithAudience("api://your-mcp-server").
+		WithIssuer(fmt.Sprintf("https://%s", getEnv("OKTA_DOMAIN", "dev-12345.okta.com"))).
+		WithAudience(getEnv("OKTA_AUDIENCE", "api://my-mcp-server")).
 		WithHost(getEnv("MCP_HOST", "localhost")).
 		WithPort(getEnv("MCP_PORT", "8080")).
 		WithTLS(getEnv("HTTPS_CERT_FILE", "") != "").

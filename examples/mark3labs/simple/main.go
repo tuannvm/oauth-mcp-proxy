@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -16,12 +17,16 @@ func main() {
 	// 1. Create HTTP multiplexer
 	mux := http.NewServeMux()
 
-	// 2. Enable OAuth authentication
+	// 2. Configure OAuth with Okta
+	// Set these environment variables:
+	//   export OKTA_DOMAIN="dev-12345.okta.com"              (your Okta domain)
+	//   export OKTA_AUDIENCE="api://my-mcp-server"          (your API identifier)
+	//   export SERVER_URL="https://mcp.example.com"         (your server URL)
 	_, oauthOption, err := mark3labs.WithOAuth(mux, &oauth.Config{
-		Provider:  "okta", // or "hmac", "google", "azure"
-		Issuer:    "https://your-company.okta.com",
-		Audience:  "api://your-mcp-server",
-		ServerURL: "https://your-server.com",
+		Provider:  "okta",
+		Issuer:    fmt.Sprintf("https://%s", getEnv("OKTA_DOMAIN", "dev-12345.okta.com")),
+		Audience:  getEnv("OKTA_AUDIENCE", "api://my-mcp-server"),
+		ServerURL: getEnv("SERVER_URL", "http://localhost:8080"),
 	})
 	if err != nil {
 		log.Fatalf("OAuth setup failed: %v", err)
@@ -55,8 +60,24 @@ func main() {
 	mux.Handle("/mcp", streamableServer)
 
 	// 6. Start server
-	log.Println("Starting MCP server on :8080")
-	if err := http.ListenAndServe(":8080", mux); err != nil {
+	port := getEnv("PORT", "8080")
+	log.Printf("Starting MCP server on :%s", port)
+	log.Printf("OAuth Provider: Okta")
+	log.Printf("Issuer: https://%s", getEnv("OKTA_DOMAIN", "dev-12345.okta.com"))
+	log.Printf("Audience: %s", getEnv("OKTA_AUDIENCE", "api://my-mcp-server"))
+	log.Println("\nMake sure to set your Okta environment variables:")
+	log.Println("  export OKTA_DOMAIN=dev-12345.okta.com")
+	log.Println("  export OKTA_AUDIENCE=api://my-mcp-server")
+	log.Println("  export SERVER_URL=http://localhost:8080")
+
+	if err := http.ListenAndServe(":"+port, mux); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
 }
