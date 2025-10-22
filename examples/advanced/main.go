@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	oauth "github.com/tuannvm/oauth-mcp-proxy"
+	"github.com/tuannvm/oauth-mcp-proxy/mark3labs"
 )
 
 func main() {
@@ -31,7 +32,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Feature 2: WithOAuth returns Server instance for helper methods
-	oauthServer, oauthOption, err := oauth.WithOAuth(mux, cfg)
+	oauthServer, oauthOption, err := mark3labs.WithOAuth(mux, cfg)
 	if err != nil {
 		log.Fatalf("OAuth setup failed: %v", err)
 	}

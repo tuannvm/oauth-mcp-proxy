@@ -9,6 +9,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	oauth "github.com/tuannvm/oauth-mcp-proxy"
+	"github.com/tuannvm/oauth-mcp-proxy/mark3labs"
 )
 
 func main() {
@@ -16,7 +17,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	// 2. Enable OAuth authentication
-	_, oauthOption, err := oauth.WithOAuth(mux, &oauth.Config{
+	_, oauthOption, err := mark3labs.WithOAuth(mux, &oauth.Config{
 		Provider:  "okta", // or "hmac", "google", "azure"
 		Issuer:    "https://your-company.okta.com",
 		Audience:  "api://your-mcp-server",
