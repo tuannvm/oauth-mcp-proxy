@@ -127,7 +127,7 @@ func main() {
 	log.Printf("Tools registered: greet, whoami, server_time")
 
 	// Start server
-	port := getEnv("PORT", "8080")
+	port := getEnv("MCP_PORT", "8080")
 	addr := ":" + port
 
 	log.Printf("\nStarting MCP server on %s", addr)

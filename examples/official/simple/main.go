@@ -66,6 +66,10 @@ func main() {
 	oauthServer.LogStartup(false) // false = HTTP (set true if using HTTPS)
 
 	// 7. Start server
+	// Note: PORT is the local bind port. If you change SERVER_URL port
+	// (e.g., http://localhost:9000), also set PORT=9000 to match.
+	// For production with reverse proxy, PORT is your local port while
+	// SERVER_URL is the public URL (e.g., SERVER_URL=https://api.example.com, PORT=8080)
 	port := getEnv("PORT", "8080")
 	addr := ":" + port
 
