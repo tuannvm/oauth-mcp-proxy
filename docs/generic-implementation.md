@@ -322,30 +322,38 @@ go test ./mark3labs/...
 
 ### Checkpoint 2.4: Update examples to use mark3labs package ✅
 
-**Task**: Update example code to import from mark3labs package.
+**Task**: Update example code to import from SDK-specific packages and create examples for both SDKs.
 
-**Files to Update**:
-- `examples/simple/main.go`
-- `examples/advanced/main.go`
+**Files Updated**:
+- `examples/mark3labs/simple/main.go`
+- `examples/mark3labs/advanced/main.go`
+- `examples/official/simple/main.go` (new)
+- `examples/official/advanced/main.go` (new)
 
 **Changes**:
 ```diff
+# mark3labs examples:
 - import "github.com/tuannvm/oauth-mcp-proxy"
 + import "github.com/tuannvm/oauth-mcp-proxy/mark3labs"
 
 - oauth.WithOAuth(mux, cfg)
 + mark3labs.WithOAuth(mux, cfg)
+
+# official SDK examples (new):
++ import mcpoauth "github.com/tuannvm/oauth-mcp-proxy/mcp"
++ mcpoauth.WithOAuth(mux, cfg, mcpServer)
 ```
 
 **Verification**:
 ```bash
-cd examples/simple && go build .
-cd examples/advanced && go build .
+for example in $(find examples -name main.go); do
+  echo "Building $example..." && go build "$example"
+done
 ```
 
-**Expected Outcome**: Examples build and run successfully.
+**Expected Outcome**: All 4 examples build and run successfully.
 
-**Actual Outcome**: ✅ Completed. Updated both examples to use mark3labs.WithOAuth(). Both examples build successfully.
+**Actual Outcome**: ✅ Completed. Created 4 examples (2 per SDK). All examples build successfully with Okta configuration.
 
 ---
 
@@ -718,9 +726,11 @@ make clean
 make test
 make lint
 make test-coverage
-cd examples/simple && go run main.go
-cd examples/advanced && go run main.go
-cd examples/official && go run main.go
+
+# Test all examples build
+for example in $(find examples -name main.go); do
+  echo "Building $example..." && go build "$example"
+done
 ```
 
 **Expected Outcome**: Everything works.

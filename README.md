@@ -190,10 +190,14 @@ Your MCP server now requires OAuth authentication.
 
 ## Examples
 
-| Example | Description |
-|---------|-------------|
-| **[Simple](examples/simple/)** | Minimal setup - copy/paste ready |
-| **[Advanced](examples/advanced/)** | All features - ConfigBuilder, WrapHandler, LogStartup |
+See [examples/README.md](examples/README.md) for detailed setup guide including Okta configuration.
+
+| SDK | Example | Description |
+|-----|---------|-------------|
+| **mark3labs** | [Simple](examples/mark3labs/simple/) | Minimal setup - copy/paste ready |
+| **mark3labs** | [Advanced](examples/mark3labs/advanced/) | ConfigBuilder, multiple tools, logging |
+| **Official** | [Simple](examples/official/simple/) | Minimal setup - copy/paste ready |
+| **Official** | [Advanced](examples/official/advanced/) | ConfigBuilder, multiple tools, logging |
 
 ---
 

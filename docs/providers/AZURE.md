@@ -1,3 +1,6 @@
+> **📢 v2.0.0:** This guide shows examples for both `mark3labs/mcp-go` and official `modelcontextprotocol/go-sdk`.
+> See [examples/README.md](../../examples/README.md) for complete setup guide.
+
 # Azure AD Provider Guide
 
 ## Overview

@@ -325,7 +325,7 @@ curl -H "Accept: application/json, text/event-stream" ...
 FROM golang:1.24 AS builder
 WORKDIR /app
 COPY . .
-RUN go build -o server ./examples/advanced
+RUN go build -o server ./examples/mark3labs/advanced
 
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates

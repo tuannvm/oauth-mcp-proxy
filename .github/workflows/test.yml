@@ -48,8 +48,10 @@ jobs:
 
       - name: Build examples
         run: |
-          go build ./examples/simple/main.go
-          go build ./examples/advanced/main.go
+          for example in $(find examples -name main.go); do
+            echo "Building $example..."
+            go build "$example"
+          done
 
       - name: Run go vet
         run: go vet ./...

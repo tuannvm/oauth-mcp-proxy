@@ -1,5 +1,8 @@
 # HMAC Provider Guide
 
+> **📢 v2.0.0:** This guide shows examples for both `mark3labs/mcp-go` and official `modelcontextprotocol/go-sdk`.
+> See [MIGRATION-V2.md](../../MIGRATION-V2.md) for upgrade details.
+
 ## Overview
 
 HMAC provider uses shared secret JWT validation with HS256 algorithm. Best for testing, development, and service-to-service authentication.
@@ -23,12 +26,46 @@ HMAC provider uses shared secret JWT validation with HS256 algorithm. Best for t
 
 ## Configuration
 
+### Using mark3labs/mcp-go
+
 ```go
-oauth.WithOAuth(mux, &oauth.Config{
+import (
+    oauth "github.com/tuannvm/oauth-mcp-proxy"
+    "github.com/tuannvm/oauth-mcp-proxy/mark3labs"
+)
+
+mux := http.NewServeMux()
+
+_, oauthOption, _ := mark3labs.WithOAuth(mux, &oauth.Config{
     Provider:  "hmac",
     Audience:  "api://my-mcp-server",      // Your server's identifier
     JWTSecret: []byte("your-secret-key"),  // 32+ bytes recommended
 })
+
+mcpServer := server.NewMCPServer("My Server", "1.0.0", oauthOption)
+```
+
+### Using Official SDK
+
+```go
+import (
+    oauth "github.com/tuannvm/oauth-mcp-proxy"
+    mcpoauth "github.com/tuannvm/oauth-mcp-proxy/mcp"
+)
+
+mux := http.NewServeMux()
+mcpServer := mcp.NewServer(&mcp.Implementation{
+    Name:    "My Server",
+    Version: "1.0.0",
+}, nil)
+
+_, handler, _ := mcpoauth.WithOAuth(mux, &oauth.Config{
+    Provider:  "hmac",
+    Audience:  "api://my-mcp-server",      // Your server's identifier
+    JWTSecret: []byte("your-secret-key"),  // 32+ bytes recommended
+}, mcpServer)
+
+http.ListenAndServe(":8080", handler)
 ```
 
 ### Required Fields
@@ -92,11 +129,20 @@ if len(secret) < 32 {
     log.Fatal("JWT_SECRET must be at least 32 bytes")
 }
 
-oauth.WithOAuth(mux, &oauth.Config{
+// mark3labs SDK:
+_, oauthOption, _ := mark3labs.WithOAuth(mux, &oauth.Config{
     Provider:  "hmac",
     Audience:  "api://my-server",
     JWTSecret: secret,
 })
+mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
+
+// OR official SDK:
+_, handler, _ := mcpoauth.WithOAuth(mux, &oauth.Config{
+    Provider:  "hmac",
+    Audience:  "api://my-server",
+    JWTSecret: secret,
+}, mcpServer)
 ```
 
 ### Secret Strength
@@ -152,9 +198,17 @@ curl -X POST http://localhost:8080/mcp \
 
 ---
 
-## Example
+## Complete Examples
 
-See [examples/simple/main.go](../../examples/simple/main.go) for a complete working example with HMAC provider.
+**mark3labs SDK:**
+- [examples/mark3labs/simple/](../../examples/mark3labs/simple/) - Minimal HMAC setup
+- [examples/mark3labs/advanced/](../../examples/mark3labs/advanced/) - Full featured
+
+**Official SDK:**
+- [examples/official/simple/](../../examples/official/simple/) - Minimal HMAC setup
+- [examples/official/advanced/](../../examples/official/advanced/) - Full featured
+
+See [examples/README.md](../../examples/README.md) for setup instructions.
 
 ---
 

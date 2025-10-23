@@ -474,7 +474,7 @@ echo "<token>" | cut -d. -f2 | base64 -d 2>/dev/null | jq
 
 ```bash
 # Generate test token (HMAC)
-go run examples/simple/main.go
+go run examples/mark3labs/simple/ or examples/official/simple/
 # Copy token from output, test with curl
 
 # For OIDC providers, get token from provider:
