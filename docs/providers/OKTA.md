@@ -1,5 +1,8 @@
 # Okta Provider Guide
 
+> **📢 v2.0.0:** This guide shows examples for both `mark3labs/mcp-go` and official `modelcontextprotocol/go-sdk`.
+> See [examples/README.md](../../examples/README.md) for complete Okta setup guide.
+
 ## Overview
 
 Okta provider uses OIDC/JWKS for JWT validation. Ideal for enterprise SSO, user management, and production deployments.
@@ -74,12 +77,28 @@ By default, Okta uses the org authorization server. For custom authorization ser
 
 **When:** Client handles OAuth (Claude Desktop, browser clients)
 
+**mark3labs SDK:**
 ```go
-oauth.WithOAuth(mux, &oauth.Config{
+import "github.com/tuannvm/oauth-mcp-proxy/mark3labs"
+
+_, oauthOption, _ := mark3labs.WithOAuth(mux, &oauth.Config{
     Provider: "okta",
-    Issuer:   "https://yourcompany.okta.com",  // Your Okta domain
-    Audience: "api://your-mcp-server",         // Custom audience or Client ID
+    Issuer:   "https://yourcompany.okta.com",
+    Audience: "api://your-mcp-server",
 })
+mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
+```
+
+**Official SDK:**
+```go
+import mcpoauth "github.com/tuannvm/oauth-mcp-proxy/mcp"
+
+_, handler, _ := mcpoauth.WithOAuth(mux, &oauth.Config{
+    Provider: "okta",
+    Issuer:   "https://yourcompany.okta.com",
+    Audience: "api://your-mcp-server",
+}, mcpServer)
+http.ListenAndServe(":8080", handler)
 ```
 
 Client configures OAuth directly with Okta. Server only validates tokens.
@@ -90,8 +109,11 @@ Client configures OAuth directly with Okta. Server only validates tokens.
 
 **When:** Client cannot do OAuth (simple CLI tools)
 
+**mark3labs SDK:**
 ```go
-oauth.WithOAuth(mux, &oauth.Config{
+import "github.com/tuannvm/oauth-mcp-proxy/mark3labs"
+
+_, oauthOption, _ := mark3labs.WithOAuth(mux, &oauth.Config{
     Provider:     "okta",
     Issuer:       "https://yourcompany.okta.com",
     Audience:     "api://your-mcp-server",
@@ -100,6 +122,23 @@ oauth.WithOAuth(mux, &oauth.Config{
     ServerURL:    "https://your-mcp-server.com",     // Your public URL
     RedirectURIs: "https://your-mcp-server.com/oauth/callback",
 })
+mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
+```
+
+**Official SDK:**
+```go
+import mcpoauth "github.com/tuannvm/oauth-mcp-proxy/mcp"
+
+_, handler, _ := mcpoauth.WithOAuth(mux, &oauth.Config{
+    Provider:     "okta",
+    Issuer:       "https://yourcompany.okta.com",
+    Audience:     "api://your-mcp-server",
+    ClientID:     "0oa...",                           // From Okta app
+    ClientSecret: "secret-from-okta",                 // From Okta app
+    ServerURL:    "https://your-mcp-server.com",     // Your public URL
+    RedirectURIs: "https://your-mcp-server.com/oauth/callback",
+}, mcpServer)
+http.ListenAndServe(":8080", handler)
 ```
 
 Server proxies OAuth flow. Client gets tokens from your server.
@@ -115,7 +154,8 @@ Okta tokens include `aud` (audience) claim. Configure it:
 Simplest approach:
 
 ```go
-oauth.WithOAuth(mux, &oauth.Config{
+// mark3labs or official SDK - same config
+mark3labs.WithOAuth(mux, &oauth.Config{
     Provider: "okta",
     Issuer:   "https://yourcompany.okta.com",
     Audience: "0oa...",  // Same as ClientID
@@ -139,7 +179,8 @@ For custom audience (e.g., `api://my-server`):
 Then configure:
 
 ```go
-oauth.WithOAuth(mux, &oauth.Config{
+// mark3labs or official SDK - same config
+mark3labs.WithOAuth(mux, &oauth.Config{
     Provider: "okta",
     Issuer:   "https://yourcompany.okta.com",
     Audience: "api://my-server",  // Your custom audience

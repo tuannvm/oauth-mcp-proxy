@@ -10,14 +10,18 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	oauth "github.com/tuannvm/oauth-mcp-proxy"
+	"github.com/tuannvm/oauth-mcp-proxy/mark3labs"
 )
 
 func main() {
 	// Feature 1: ConfigBuilder - Auto-generates ServerURL from host/port/TLS
+	// Set these environment variables:
+	//   export OKTA_DOMAIN="dev-12345.okta.com"
+	//   export OKTA_AUDIENCE="api://my-mcp-server"
 	cfg, err := oauth.NewConfigBuilder().
 		WithProvider("okta").
-		WithIssuer("https://your-company.okta.com").
-		WithAudience("api://your-mcp-server").
+		WithIssuer(fmt.Sprintf("https://%s", getEnv("OKTA_DOMAIN", "dev-12345.okta.com"))).
+		WithAudience(getEnv("OKTA_AUDIENCE", "api://my-mcp-server")).
 		WithHost(getEnv("MCP_HOST", "localhost")).
 		WithPort(getEnv("MCP_PORT", "8080")).
 		WithTLS(getEnv("HTTPS_CERT_FILE", "") != "").
@@ -31,7 +35,7 @@ func main() {
 	mux := http.NewServeMux()
 
 	// Feature 2: WithOAuth returns Server instance for helper methods
-	oauthServer, oauthOption, err := oauth.WithOAuth(mux, cfg)
+	oauthServer, oauthOption, err := mark3labs.WithOAuth(mux, cfg)
 	if err != nil {
 		log.Fatalf("OAuth setup failed: %v", err)
 	}

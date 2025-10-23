@@ -7,91 +7,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
-
-// Re-export User from provider for backwards compatibility
-type User = provider.User
-
-// Context keys
-type contextKey string
-
-const (
-	oauthTokenKey  contextKey = "oauth_token"
-	userContextKey contextKey = "user"
-)
-
-// TokenCache stores validated tokens to avoid re-validation
-type TokenCache struct {
-	mu    sync.RWMutex
-	cache map[string]*CachedToken
-}
-
-// CachedToken represents a cached token validation result
-type CachedToken struct {
-	User      *User
-	ExpiresAt time.Time
-}
-
-// WithOAuthToken adds an OAuth token to the context
-func WithOAuthToken(ctx context.Context, token string) context.Context {
-	return context.WithValue(ctx, oauthTokenKey, token)
-}
-
-// GetOAuthToken extracts an OAuth token from the context
-func GetOAuthToken(ctx context.Context) (string, bool) {
-	token, ok := ctx.Value(oauthTokenKey).(string)
-	return token, ok
-}
-
-// getCachedToken retrieves a cached token validation result
-func (tc *TokenCache) getCachedToken(tokenHash string) (*CachedToken, bool) {
-	tc.mu.RLock()
-
-	cached, exists := tc.cache[tokenHash]
-	if !exists {
-		tc.mu.RUnlock()
-		return nil, false
-	}
-
-	// Check if token is expired
-	if time.Now().After(cached.ExpiresAt) {
-		tc.mu.RUnlock()
-		// Schedule expired token deletion in a separate operation
-		go tc.deleteExpiredToken(tokenHash)
-		return nil, false
-	}
-
-	tc.mu.RUnlock()
-	return cached, true
-}
-
-// deleteExpiredToken safely deletes an expired token from the cache
-func (tc *TokenCache) deleteExpiredToken(tokenHash string) {
-	tc.mu.Lock()
-	defer tc.mu.Unlock()
-
-	// Double-check if token is still expired before deleting
-	if cached, exists := tc.cache[tokenHash]; exists && time.Now().After(cached.ExpiresAt) {
-		delete(tc.cache, tokenHash)
-	}
-}
-
-// setCachedToken stores a token validation result
-func (tc *TokenCache) setCachedToken(tokenHash string, user *User, expiresAt time.Time) {
-	tc.mu.Lock()
-	defer tc.mu.Unlock()
-
-	tc.cache[tokenHash] = &CachedToken{
-		User:      user,
-		ExpiresAt: expiresAt,
-	}
-}
 
 // Middleware returns an authentication middleware for MCP tools.
 // Validates OAuth tokens, caches results, and adds authenticated user to context.
@@ -182,24 +103,6 @@ func OAuthMiddleware(validator provider.TokenValidator, enabled bool) func(serve
 }
 
 // validateJWT is deprecated - use provider-based validation instead
-
-// GetUserFromContext extracts the authenticated user from context.
-// Returns the User and true if authentication succeeded, or nil and false otherwise.
-//
-// Example:
-//
-//	func toolHandler(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-//	    user, ok := oauth.GetUserFromContext(ctx)
-//	    if !ok {
-//	        return nil, fmt.Errorf("authentication required")
-//	    }
-//	    // Use user.Subject, user.Email, user.Username
-//	    return mcp.NewToolResultText("Hello, " + user.Username), nil
-//	}
-func GetUserFromContext(ctx context.Context) (*User, bool) {
-	user, ok := ctx.Value(userContextKey).(*User)
-	return user, ok
-}
 
 // CreateHTTPContextFunc creates an HTTP context function that extracts OAuth tokens
 // from Authorization headers. Use with mcpserver.WithHTTPContextFunc() to enable

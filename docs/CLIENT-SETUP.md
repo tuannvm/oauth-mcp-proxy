@@ -160,14 +160,30 @@ Tells clients this is an OAuth-protected resource.
 
 ### Native Mode
 
-**Server config:**
+**Server config (mark3labs SDK):**
 
 ```go
-oauth.WithOAuth(mux, &oauth.Config{
+import "github.com/tuannvm/oauth-mcp-proxy/mark3labs"
+
+_, oauthOption, _ := mark3labs.WithOAuth(mux, &oauth.Config{
     Provider: "okta",
     Issuer:   "https://company.okta.com",
     Audience: "api://my-server",
 })
+mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
+```
+
+**Server config (official SDK):**
+
+```go
+import mcpoauth "github.com/tuannvm/oauth-mcp-proxy/mcp"
+
+mcpServer := mcp.NewServer(&mcp.Implementation{...}, nil)
+_, handler, _ := mcpoauth.WithOAuth(mux, &oauth.Config{
+    Provider: "okta",
+    Issuer:   "https://company.okta.com",
+    Audience: "api://my-server",
+}, mcpServer)
 ```
 
 **Client discovers:**
@@ -193,16 +209,34 @@ Client fetches metadata, sees Okta issuer, handles OAuth with Okta directly.
 
 ### Proxy Mode
 
-**Server config:**
+**Server config (mark3labs SDK):**
 
 ```go
-oauth.WithOAuth(mux, &oauth.Config{
+import "github.com/tuannvm/oauth-mcp-proxy/mark3labs"
+
+_, oauthOption, _ := mark3labs.WithOAuth(mux, &oauth.Config{
     Provider:     "okta",
     ClientID:     "...",
     ClientSecret: "...",
     ServerURL:    "https://your-server.com",
     RedirectURIs: "https://your-server.com/oauth/callback",
 })
+mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
+```
+
+**Server config (official SDK):**
+
+```go
+import mcpoauth "github.com/tuannvm/oauth-mcp-proxy/mcp"
+
+mcpServer := mcp.NewServer(&mcp.Implementation{...}, nil)
+_, handler, _ := mcpoauth.WithOAuth(mux, &oauth.Config{
+    Provider:     "okta",
+    ClientID:     "...",
+    ClientSecret: "...",
+    ServerURL:    "https://your-server.com",
+    RedirectURIs: "https://your-server.com/oauth/callback",
+}, mcpServer)
 ```
 
 **Client discovers:**
@@ -297,9 +331,9 @@ jq '.issuer' # Should be your provider (native) or your server (proxy)
 
 ```bash
 # For HMAC - generate test token
-# See examples/simple/main.go for token generation
+# See examples/mark3labs/simple/ or examples/official/simple/ for token generation
 
-# For OIDC - get token from provider
+# For OIDC - get token from provider (see examples/README.md for Okta setup)
 # Test with curl
 curl -X POST https://your-server.com/mcp \
   -H "Authorization: Bearer <token>" \

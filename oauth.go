@@ -1,9 +1,12 @@
 package oauth
 
 import (
+	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
 	"github.com/tuannvm/oauth-mcp-proxy/provider"
@@ -94,6 +97,39 @@ func (s *Server) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/oauth/token", s.handler.HandleToken)
 	mux.HandleFunc("/oauth/register", s.handler.HandleRegister)
 	mux.HandleFunc("/.well-known/openid-configuration", s.handler.HandleOIDCDiscovery)
+}
+
+// ValidateTokenCached validates a token with caching support.
+// This is the core validation method that SDK adapters can use.
+//
+// The method:
+//  1. Checks token cache (5-minute TTL)
+//  2. Validates token using configured provider if not cached
+//  3. Caches validation result for future requests
+//  4. Returns authenticated User or error
+//
+// This method is used internally by both WrapHandler and adapter middleware.
+func (s *Server) ValidateTokenCached(ctx context.Context, token string) (*User, error) {
+	tokenHash := fmt.Sprintf("%x", sha256.Sum256([]byte(token)))
+
+	if cached, exists := s.cache.getCachedToken(tokenHash); exists {
+		s.logger.Info("Using cached authentication (hash: %s...)", tokenHash[:16])
+		return cached.User, nil
+	}
+
+	s.logger.Info("Validating token (hash: %s...)", tokenHash[:16])
+
+	user, err := s.validator.ValidateToken(ctx, token)
+	if err != nil {
+		s.logger.Error("Token validation failed: %v", err)
+		return nil, fmt.Errorf("authentication failed: %w", err)
+	}
+
+	expiresAt := time.Now().Add(5 * time.Minute)
+	s.cache.setCachedToken(tokenHash, user, expiresAt)
+
+	s.logger.Info("Authenticated user %s (cached for 5 minutes)", user.Username)
+	return user, nil
 }
 
 // GetAuthorizationServerMetadataURL returns the OAuth 2.0 authorization server metadata URL
@@ -243,8 +279,27 @@ func (s *Server) WrapHandler(next http.Handler) http.Handler {
 			return
 		}
 
-		contextFunc := CreateHTTPContextFunc()
-		ctx := contextFunc(r.Context(), r)
+		token := authHeader[7:]
+
+		user, err := s.ValidateTokenCached(r.Context(), token)
+		if err != nil {
+			s.logger.Info("OAuth: Token validation failed: %v", err)
+
+			metadataURL := s.GetProtectedResourceMetadataURL()
+			w.Header().Add("WWW-Authenticate", `Bearer realm="OAuth", error="invalid_token", error_description="Authentication failed"`)
+			w.Header().Add("WWW-Authenticate", fmt.Sprintf(`resource_metadata="%s"`, metadataURL))
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+
+			_ = json.NewEncoder(w).Encode(oauthErrorResponse{
+				Error:            "invalid_token",
+				ErrorDescription: "Authentication failed",
+			})
+			return
+		}
+
+		ctx := WithOAuthToken(r.Context(), token)
+		ctx = WithUser(ctx, user)
 		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)
