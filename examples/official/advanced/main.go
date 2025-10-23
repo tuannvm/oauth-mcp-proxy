@@ -114,7 +114,9 @@ func main() {
 	}
 
 	// Feature 4: LogStartup - Displays OAuth endpoint information
-	useTLS := getEnv("HTTPS_CERT_FILE", "") != ""
+	certFile := getEnv("HTTPS_CERT_FILE", "")
+	keyFile := getEnv("HTTPS_KEY_FILE", "")
+	useTLS := certFile != "" && keyFile != ""
 	oauthServer.LogStartup(useTLS)
 
 	// Additional OAuth endpoints available via helper methods
@@ -130,15 +132,32 @@ func main() {
 	port := getEnv("MCP_PORT", "8080")
 	addr := ":" + port
 
-	log.Printf("\nStarting MCP server on %s", addr)
+	log.Printf("\nStarting MCP server (TLS=%t) on %s", useTLS, addr)
 	log.Println("\nMake sure to set your Okta environment variables:")
 	log.Println("  export OKTA_DOMAIN=dev-12345.okta.com")
 	log.Println("  export OKTA_AUDIENCE=api://my-mcp-server")
+	if useTLS {
+		log.Println("\nFor TLS, also set:")
+		log.Println("  export HTTPS_CERT_FILE=/path/to/cert.pem")
+		log.Println("  export HTTPS_KEY_FILE=/path/to/key.pem")
+	}
 	log.Println("\nTo test, obtain an access token from Okta and use:")
-	log.Printf("  curl -H 'Authorization: Bearer <okta-token>' http://localhost:%s", port)
+	protocol := "http"
+	if useTLS {
+		protocol = "https"
+	}
+	log.Printf("  curl -H 'Authorization: Bearer <okta-token>' %s://localhost:%s", protocol, port)
 
-	if err := http.ListenAndServe(addr, handler); err != nil {
-		log.Fatalf("Server failed: %v", err)
+	if useTLS {
+		log.Printf("\nStarting HTTPS server on %s", addr)
+		if err := http.ListenAndServeTLS(addr, certFile, keyFile, handler); err != nil {
+			log.Fatalf("HTTPS server failed: %v", err)
+		}
+	} else {
+		log.Printf("\nStarting HTTP server on %s", addr)
+		if err := http.ListenAndServe(addr, handler); err != nil {
+			log.Fatalf("HTTP server failed: %v", err)
+		}
 	}
 }
 
