@@ -1,6 +1,6 @@
 # HMAC Provider Guide
 
-> **📢 v2.0.0:** This guide shows examples for both `mark3labs/mcp-go` and official `modelcontextprotocol/go-sdk`.
+> **📢 v1.0.0:** This guide shows examples for both `mark3labs/mcp-go` and official `modelcontextprotocol/go-sdk`.
 > See [MIGRATION-V2.md](../../MIGRATION-V2.md) for upgrade details.
 
 ## Overview

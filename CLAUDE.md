@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **oauth-mcp-proxy** is an OAuth 2.1 authentication library for Go MCP servers. It provides server-side OAuth integration with minimal code (3-line integration via `WithOAuth()`), supporting multiple providers (HMAC, Okta, Google, Azure AD).
 
-**Version**: v2.0.0 (Supports both `mark3labs/mcp-go` and official `modelcontextprotocol/go-sdk`)
+**Version**: v1.0.0 (Supports both `mark3labs/mcp-go` and official `modelcontextprotocol/go-sdk`)
 
 ## Build Commands
 
@@ -38,7 +38,7 @@ make vuln
 
 ## Architecture
 
-### Package Structure (v2.0.0)
+### Package Structure (v1.0.0)
 
 ```
 oauth-mcp-proxy/
@@ -142,7 +142,7 @@ go test -v -run TestName ./...
 3. **Logging**: Config.Logger is optional. If nil, uses default logger (log.Printf with level prefixes)
 4. **Modes**: Library supports "native" (token validation only) and "proxy" (OAuth flow proxy) modes
 5. **Security**: All redirect URIs validated, state parameters HMAC-signed, tokens never logged (only hash previews)
-6. **v2.0.0 Breaking Change**: `WithOAuth()` moved to adapter packages (`mark3labs.WithOAuth()` or `mcp.WithOAuth()`). See `MIGRATION-V2.md`.
+6. **Adapter Pattern**: `WithOAuth()` is in adapter packages (`mark3labs.WithOAuth()` or `mcp.WithOAuth()`) for SDK-specific integration.
 
 ## Using the Library
 

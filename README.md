@@ -31,7 +31,6 @@ _, handler, _ := mcpoauth.WithOAuth(mux, cfg, mcpServer)
 http.ListenAndServe(":8080", handler)
 ```
 
-> **📢 Migrating from v1.x?** See [MIGRATION-V2.md](./MIGRATION-V2.md) (2 line change, ~5 min)
 
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/tuannvm/oauth-mcp-proxy/test.yml?branch=main&label=Tests&logo=github)](https://github.com/tuannvm/oauth-mcp-proxy/actions/workflows/test.yml)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/tuannvm/oauth-mcp-proxy?logo=go)](https://github.com/tuannvm/oauth-mcp-proxy/blob/main/go.mod)

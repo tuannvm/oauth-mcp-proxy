@@ -220,7 +220,7 @@ All examples, README.md, CLAUDE.md, and tutorials need updates to reflect new im
 3. **Phase 3**: Create mcp adapter
 4. **Phase 4**: Update tests
 5. **Phase 5**: Update documentation
-6. **Phase 6**: Release v2.0.0 with migration guide
+6. **Phase 6**: Release v1.0.0 with migration guide
 
 ### For Library Users
 

@@ -687,14 +687,14 @@ open coverage.html
 
 ## Phase 6: Release Preparation
 
-**Goal**: Prepare for v2.0.0 release.
+**Goal**: Prepare for v1.0.0 release.
 
 ### Checkpoint 6.1: Update version and changelog ⬜
 
 **Task**: Prepare release artifacts.
 
 **Files to Update/Create**:
-- `CHANGELOG.md` (document v2.0.0 changes)
+- `CHANGELOG.md` (document v1.0.0 changes)
 - Version tags in code
 
 **Contents**:
@@ -739,7 +739,7 @@ done
 
 ### Checkpoint 6.3: Create release PR ⬜
 
-**Task**: Create pull request for v2.0.0.
+**Task**: Create pull request for v1.0.0.
 
 **PR Contents**:
 - Link to this implementation doc
