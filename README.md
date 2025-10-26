@@ -54,19 +54,69 @@ http.ListenAndServe(":8080", handler)
 
 ## How It Works
 
+### Request Flow
+
 ```mermaid
 sequenceDiagram
     participant Client
-    participant Your Server
-    participant oauth-mcp-proxy
-    participant OAuth Provider
+    participant MCP Server
+    box lightyellow oauth-mcp-proxy Library
+    participant Middleware
+    participant Cache
+    participant Provider
+    end
+    participant Your Tool Handler
 
-    Client->>Your Server: Request with Bearer token
-    Your Server->>oauth-mcp-proxy: Validate token
-    oauth-mcp-proxy->>OAuth Provider: Check token (cached 5min)
-    OAuth Provider->>oauth-mcp-proxy: Valid + user claims
-    oauth-mcp-proxy->>Your Server: Authenticated user in context
-    Your Server->>Client: Execute protected tool
+    Client->>MCP Server: Request + Bearer token
+    MCP Server->>Middleware: WithOAuth() intercepts
+
+    alt Token in cache and fresh
+        Middleware->>Cache: Check token hash
+        Cache-->>Middleware: Return cached user
+    else Token not cached or expired
+        Middleware->>Provider: Validate token (HMAC/OIDC)
+        Provider-->>Middleware: User claims
+        Middleware->>Cache: Store user for 5 minutes
+    end
+
+    Middleware->>Your Tool Handler: Pass request with user in context
+    Your Tool Handler->>Your Tool Handler: GetUserFromContext(ctx)
+    Your Tool Handler-->>Client: Send response
+```
+
+### Token Validation Flow
+
+```mermaid
+flowchart TB
+    Start([Your MCP Server receives request]) --> Extract[oauth-mcp-proxy: Extract Token]
+    Extract --> Hash[oauth-mcp-proxy: SHA-256 Hash]
+    Hash --> CheckCache{oauth-mcp-proxy: Token Cached?}
+
+    CheckCache -->|Cache Hit| GetUser[oauth-mcp-proxy: Get Cached User]
+    CheckCache -->|Cache Miss| Validate{oauth-mcp-proxy: Validate}
+
+    Validate -->|Valid| Claims[oauth-mcp-proxy: Extract Claims]
+    Validate -->|Invalid| Reject([Return 401])
+
+    Claims --> Store[oauth-mcp-proxy: Cache]
+    Store --> GetUser
+
+    GetUser --> Context[oauth-mcp-proxy: Add User to Context]
+    Context --> Tool[Your Tool Handler: GetUserFromContext]
+    Tool --> Response([Your MCP Server: Return Response])
+
+    style Start fill:#e8f5e9
+    style Extract fill:#fff9c4
+    style Hash fill:#fff9c4
+    style CheckCache fill:#fff9c4
+    style Validate fill:#fff9c4
+    style Claims fill:#fff9c4
+    style Store fill:#fff9c4
+    style GetUser fill:#fff9c4
+    style Context fill:#fff9c4
+    style Tool fill:#e8f5e9
+    style Response fill:#e8f5e9
+    style Reject fill:#ffebee
 ```
 
 **What oauth-mcp-proxy does:**
