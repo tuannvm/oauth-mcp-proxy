@@ -51,12 +51,19 @@ jobs:
           Objectives:
           1) Re-check existing review comments and reply resolved when addressed.
           2) Review the current PR diff and flag only clear, high-severity issues.
-          3) Leave very short inline comments (1-2 sentences) on changed lines only and a brief summary at the end.
+          3) Verify language and library versions against latest releases using web search.
+          4) Leave very short inline comments (1-2 sentences) on changed lines only and a brief summary at the end.
 
           Procedure:
           - Get existing comments: gh pr view --json comments
           - Get diff: gh pr diff
           - Get changed files with patches to compute inline positions: gh api repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files --paginate --jq '.[] | {filename,patch}'
+          - IMPORTANT: When reviewing files that specify versions (go.mod, package.json, requirements.txt, Dockerfile, GitHub Actions workflows, etc.), MUST search the web for:
+            - Latest stable versions of languages (Go, Node.js, Python, etc.)
+            - Latest versions of libraries/dependencies
+            - Latest versions of base images (Docker)
+            - Latest versions of GitHub Actions
+            - Compare found versions with what's in the PR and flag outdated versions
           - Compute exact inline anchors for each issue (file path + diff position). Comments MUST be placed inline on the changed line in the diff, not as top-level comments.
           - Detect prior top-level "no issues" style comments authored by this bot (match bodies like: "✅ no issues", "No issues found", "LGTM").
           - If CURRENT run finds issues and any prior "no issues" comments exist:
@@ -74,6 +81,8 @@ jobs:
             - Obvious logic errors with incorrect behavior
             - Clear performance anti-patterns with measurable impact
             - Definitive security vulnerabilities
+            - Outdated language/library/dependency/action versions (use web search to verify latest)
+            - Deprecated APIs or patterns (search documentation for current best practices)
           - Avoid duplicates: skip if similar feedback already exists on or near the same lines.
 
           Commenting rules:
@@ -81,7 +90,7 @@ jobs:
           - One issue per comment; place on the exact changed line
           - All issue comments MUST be inline (anchored to a file and line/position in the PR diff)
           - Natural tone, specific and actionable; do not mention automated or high-confidence
-          - Use emojis: 🚨 Critical 🔒 Security ⚡ Performance ⚠️ Logic ✅ Resolved ✨ Improvement
+          - Use emojis: 🚨 Critical 🔒 Security ⚡ Performance ⚠️ Logic 📦 Outdated Version 🔄 Deprecated ✅ Resolved ✨ Improvement
 
           Submission:
           - If there are NO issues to report and an existing top-level comment indicating "no issues" already exists (e.g., "✅ no issues", "No issues found", "LGTM"), do NOT submit another comment. Skip submission to avoid redundancy.
