@@ -38,7 +38,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BLOCKING_REVIEW: ${{ vars.BLOCKING_REVIEW || 'false' }}
         run: |
-          cursor-agent --force --model "$MODEL" --output-format=text --print 'You are operating in a GitHub Actions runner performing automated code review. The gh CLI is available and authenticated via GH_TOKEN. You may comment on pull requests.
+          PROMPT=$(cat <<'EOF'
+          You are operating in a GitHub Actions runner performing automated code review. The gh CLI is available and authenticated via GH_TOKEN. You may comment on pull requests.
 
           Context:
           - Repo: ${{ github.repository }}
@@ -92,10 +93,20 @@ jobs:
           - Do NOT use: gh pr review --approve or --request-changes
 
           Blocking behavior:
-          - If BLOCKING_REVIEW is true and any 🚨 or 🔒 issues were posted: echo "CRITICAL_ISSUES_FOUND=true" >> $GITHUB_ENV
-          - Otherwise: echo "CRITICAL_ISSUES_FOUND=false" >> $GITHUB_ENV
-          - Always set CRITICAL_ISSUES_FOUND at the end
-          '
+          - At the end, print exactly one line: CRITICAL_ISSUES_FOUND=true or CRITICAL_ISSUES_FOUND=false
+          - Set to true if BLOCKING_REVIEW is true and you posted any 🚨 or 🔒 issues
+          - Set to false otherwise
+          EOF
+          )
+
+          OUTPUT=$(cursor-agent --force --model "$MODEL" --output-format=text --print "$PROMPT" 2>&1)
+          echo "$OUTPUT"
+
+          if echo "$OUTPUT" | grep -q "CRITICAL_ISSUES_FOUND=true"; then
+            echo "CRITICAL_ISSUES_FOUND=true" >> $GITHUB_ENV
+          else
+            echo "CRITICAL_ISSUES_FOUND=false" >> $GITHUB_ENV
+          fi
 
       - name: Check blocking review results
         if: env.BLOCKING_REVIEW == 'true'
