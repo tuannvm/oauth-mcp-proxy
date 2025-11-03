@@ -97,6 +97,9 @@ func WithOAuth(mux *http.ServeMux, cfg *oauth.Config, mcpServer *mcp.Server) (*o
 		}
 		token := authHeader[len(bearerPrefix):]
 
+		// Clean any whitespace (e.g., "Bearer token ")
+		token = strings.TrimSpace(token)
+
 		// Validate token is not empty
 		if token == "" {
 			oauthServer.Return401InvalidToken(w)

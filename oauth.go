@@ -350,7 +350,7 @@ func (s *Server) WrapMCPEndpoint(handler http.Handler) http.HandlerFunc {
 		if strings.HasPrefix(authLower, "bearer") {
 			// Malformed Bearer token (no space after "Bearer")
 			if !strings.HasPrefix(authLower, "bearer ") {
-				s.Return401(w)
+				s.Return401InvalidToken(w)
 				return
 			}
 			// Valid Bearer format, extract to context
@@ -371,7 +371,7 @@ func (s *Server) WrapMCPEndpoint(handler http.Handler) http.HandlerFunc {
 	}
 }
 
-// Return401 writes a 401 response with WWW-Authenticate headers.
+// Return401 writes a 401 response with WWW-Authenticate header.
 // Used by WrapMCPEndpoint and can be called by adapters.
 //
 // Returns error code "invalid_request" per RFC 6750 §3.1 for missing tokens.
@@ -379,8 +379,10 @@ func (s *Server) WrapMCPEndpoint(handler http.Handler) http.HandlerFunc {
 func (s *Server) Return401(w http.ResponseWriter) {
 	metadataURL := s.GetProtectedResourceMetadataURL()
 
-	w.Header().Add("WWW-Authenticate", `Bearer realm="OAuth", error="invalid_request", error_description="Bearer token required"`)
-	w.Header().Add("WWW-Authenticate", fmt.Sprintf(`resource_metadata="%s"`, metadataURL))
+	// RFC 6750 compliant: all parameters in single Bearer header
+	w.Header().Set("WWW-Authenticate", fmt.Sprintf(
+		`Bearer realm="OAuth", error="invalid_request", error_description="Bearer token required", resource_metadata="%s"`,
+		metadataURL))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
 
@@ -399,8 +401,10 @@ func (s *Server) Return401(w http.ResponseWriter) {
 func (s *Server) Return401InvalidToken(w http.ResponseWriter) {
 	metadataURL := s.GetProtectedResourceMetadataURL()
 
-	w.Header().Add("WWW-Authenticate", `Bearer realm="OAuth", error="invalid_token", error_description="Authentication failed"`)
-	w.Header().Add("WWW-Authenticate", fmt.Sprintf(`resource_metadata="%s"`, metadataURL))
+	// RFC 6750 compliant: all parameters in single Bearer header
+	w.Header().Set("WWW-Authenticate", fmt.Sprintf(
+		`Bearer realm="OAuth", error="invalid_token", error_description="Authentication failed", resource_metadata="%s"`,
+		metadataURL))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusUnauthorized)
 

@@ -119,10 +119,13 @@ func OAuthMiddleware(validator provider.TokenValidator, enabled bool) func(serve
 // via WithOAuthToken(). The OAuth middleware then retrieves it via GetOAuthToken().
 func CreateHTTPContextFunc() func(context.Context, *http.Request) context.Context {
 	return func(ctx context.Context, r *http.Request) context.Context {
-		// Extract Bearer token from Authorization header
+		// Extract Bearer token from Authorization header (case-insensitive per OAuth 2.0 spec)
 		authHeader := r.Header.Get("Authorization")
-		if strings.HasPrefix(authHeader, "Bearer ") {
-			token := strings.TrimPrefix(authHeader, "Bearer ")
+		authLower := strings.ToLower(authHeader)
+
+		if strings.HasPrefix(authLower, "bearer ") {
+			// Extract token (skip "Bearer " or "bearer " prefix)
+			token := authHeader[7:]
 			// Clean any whitespace
 			token = strings.TrimSpace(token)
 			ctx = WithOAuthToken(ctx, token)
