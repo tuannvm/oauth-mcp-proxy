@@ -23,12 +23,16 @@ import (
 //	})
 //	mcpServer := server.NewMCPServer("Server", "1.0.0", oauthOption)
 //
+//	streamableServer := server.NewStreamableHTTPServer(mcpServer, ...)
+//	mux.HandleFunc("/mcp", oauthServer.WrapMCPEndpoint(streamableServer))
+//
 // This function:
 // - Creates OAuth server instance
 // - Registers OAuth HTTP endpoints on mux
 // - Returns server instance and middleware as server option
 //
 // The returned Server instance provides access to:
+// - WrapMCPEndpoint() - Wrap /mcp endpoint with automatic 401 handling
 // - WrapHandler() - Wrap HTTP handlers with OAuth token validation
 // - GetHTTPServerOptions() - Get StreamableHTTPServer options
 // - LogStartup() - Log OAuth endpoint information

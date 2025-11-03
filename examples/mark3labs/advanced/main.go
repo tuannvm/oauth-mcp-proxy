@@ -50,7 +50,7 @@ func main() {
 	)
 	streamableServer := mcpserver.NewStreamableHTTPServer(mcpServer, httpOpts...)
 
-	// Feature 4: WrapHandler - Auto Bearer token pre-check with 401
+	// Feature 4: WrapMCPEndpoint - Automatic 401 handling with CORS support
 	mcpHandler := func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -64,7 +64,7 @@ func main() {
 		streamableServer.ServeHTTP(w, r)
 	}
 
-	mux.HandleFunc("/mcp", oauthServer.WrapHandlerFunc(mcpHandler))
+	mux.HandleFunc("/mcp", oauthServer.WrapMCPEndpoint(http.HandlerFunc(mcpHandler)))
 
 	// Add status endpoint (not OAuth protected)
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {

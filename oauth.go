@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -310,6 +311,104 @@ func (s *Server) WrapHandler(next http.Handler) http.Handler {
 // Convenience wrapper around WrapHandler for HandlerFunc types.
 func (s *Server) WrapHandlerFunc(next http.HandlerFunc) http.HandlerFunc {
 	return s.WrapHandler(next).ServeHTTP
+}
+
+// WrapMCPEndpoint wraps an MCP endpoint handler with automatic 401 handling.
+// Returns 401 with WWW-Authenticate headers if Bearer token is missing.
+//
+// This method provides automatic OAuth discovery for MCP clients by:
+//   - Passing through OPTIONS requests (CORS pre-flight)
+//   - Passing through non-Bearer auth schemes (e.g., Basic auth)
+//   - Returning 401 with proper headers if Bearer token is missing
+//   - Extracting token to context and passing to wrapped handler
+//
+// Usage with mark3labs SDK:
+//
+//	streamableServer := server.NewStreamableHTTPServer(mcpServer, ...)
+//	mux.HandleFunc("/mcp", oauthServer.WrapMCPEndpoint(streamableServer))
+//
+// For official SDK, use mcp.WithOAuth() which includes this automatically.
+func (s *Server) WrapMCPEndpoint(handler http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Pass through OPTIONS requests (CORS pre-flight)
+		if r.Method == http.MethodOptions {
+			handler.ServeHTTP(w, r)
+			return
+		}
+
+		// Check Authorization header
+		authHeader := r.Header.Get("Authorization")
+		authLower := strings.ToLower(authHeader)
+
+		// Return 401 if Bearer token missing
+		if authHeader == "" {
+			s.Return401(w)
+			return
+		}
+
+		// Check if it's a Bearer token (case-insensitive per OAuth 2.0 spec)
+		if strings.HasPrefix(authLower, "bearer") {
+			// Malformed Bearer token (no space after "Bearer")
+			if !strings.HasPrefix(authLower, "bearer ") {
+				s.Return401(w)
+				return
+			}
+			// Valid Bearer format, extract to context
+			// (validation happens in downstream middleware)
+		} else {
+			// Pass through non-Bearer schemes (e.g., Basic auth)
+			handler.ServeHTTP(w, r)
+			return
+		}
+
+		// Extract token to context
+		contextFunc := CreateHTTPContextFunc()
+		ctx := contextFunc(r.Context(), r)
+		r = r.WithContext(ctx)
+
+		// Pass to wrapped handler
+		handler.ServeHTTP(w, r)
+	}
+}
+
+// Return401 writes a 401 response with WWW-Authenticate headers.
+// Used by WrapMCPEndpoint and can be called by adapters.
+//
+// Returns error code "invalid_request" per RFC 6750 §3.1 for missing tokens.
+// Includes resource_metadata URL for OAuth discovery.
+func (s *Server) Return401(w http.ResponseWriter) {
+	metadataURL := s.GetProtectedResourceMetadataURL()
+
+	w.Header().Add("WWW-Authenticate", `Bearer realm="OAuth", error="invalid_request", error_description="Bearer token required"`)
+	w.Header().Add("WWW-Authenticate", fmt.Sprintf(`resource_metadata="%s"`, metadataURL))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+
+	errorResponse := map[string]string{
+		"error":             "invalid_request",
+		"error_description": "Bearer token required",
+	}
+	_ = json.NewEncoder(w).Encode(errorResponse)
+}
+
+// Return401InvalidToken writes a 401 response for invalid/expired tokens.
+// Used when token validation fails (vs missing token).
+//
+// Returns error code "invalid_token" per RFC 6750 §3.1 for invalid tokens.
+// Includes resource_metadata URL for OAuth discovery.
+func (s *Server) Return401InvalidToken(w http.ResponseWriter) {
+	metadataURL := s.GetProtectedResourceMetadataURL()
+
+	w.Header().Add("WWW-Authenticate", `Bearer realm="OAuth", error="invalid_token", error_description="Authentication failed"`)
+	w.Header().Add("WWW-Authenticate", fmt.Sprintf(`resource_metadata="%s"`, metadataURL))
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusUnauthorized)
+
+	errorResponse := map[string]string{
+		"error":             "invalid_token",
+		"error_description": "Authentication failed",
+	}
+	_ = json.NewEncoder(w).Encode(errorResponse)
 }
 
 // WithOAuth returns a server option that enables OAuth authentication

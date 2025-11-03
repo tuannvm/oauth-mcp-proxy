@@ -22,7 +22,7 @@ func main() {
 	//   export OKTA_DOMAIN="dev-12345.okta.com"              (your Okta domain)
 	//   export OKTA_AUDIENCE="api://my-mcp-server"          (your API identifier)
 	//   export SERVER_URL="https://mcp.example.com"         (your server URL)
-	_, oauthOption, err := mark3labs.WithOAuth(mux, &oauth.Config{
+	oauthServer, oauthOption, err := mark3labs.WithOAuth(mux, &oauth.Config{
 		Provider:  "okta",
 		Issuer:    fmt.Sprintf("https://%s", getEnv("OKTA_DOMAIN", "dev-12345.okta.com")),
 		Audience:  getEnv("OKTA_AUDIENCE", "api://my-mcp-server"),
@@ -51,13 +51,13 @@ func main() {
 		},
 	)
 
-	// 5. Setup MCP endpoint
+	// 5. Setup MCP endpoint with automatic 401 handling
 	streamableServer := mcpserver.NewStreamableHTTPServer(
 		mcpServer,
 		mcpserver.WithEndpointPath("/mcp"),
 		mcpserver.WithHTTPContextFunc(oauth.CreateHTTPContextFunc()),
 	)
-	mux.Handle("/mcp", streamableServer)
+	mux.HandleFunc("/mcp", oauthServer.WrapMCPEndpoint(streamableServer))
 
 	// 6. Start server
 	// Note: PORT is the local bind port. If you change SERVER_URL port
