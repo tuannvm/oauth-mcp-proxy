@@ -314,12 +314,12 @@ func (s *Server) WrapHandlerFunc(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // WrapMCPEndpoint wraps an MCP endpoint handler with automatic 401 handling.
-// Returns 401 with WWW-Authenticate headers if Bearer token is missing.
+// Returns 401 with WWW-Authenticate headers if Bearer token is missing or invalid.
 //
 // This method provides automatic OAuth discovery for MCP clients by:
 //   - Passing through OPTIONS requests (CORS pre-flight)
-//   - Passing through non-Bearer auth schemes (e.g., Basic auth)
-//   - Returning 401 with proper headers if Bearer token is missing
+//   - Rejecting non-Bearer auth schemes (OAuth-only endpoint)
+//   - Returning 401 with proper headers if Bearer token is missing/malformed
 //   - Extracting token to context and passing to wrapped handler
 //
 // Usage with mark3labs SDK:
@@ -347,17 +347,15 @@ func (s *Server) WrapMCPEndpoint(handler http.Handler) http.HandlerFunc {
 		}
 
 		// Check if it's a Bearer token (case-insensitive per OAuth 2.0 spec)
-		if strings.HasPrefix(authLower, "bearer") {
-			// Malformed Bearer token (no space after "Bearer")
-			if !strings.HasPrefix(authLower, "bearer ") {
-				s.Return401InvalidToken(w)
-				return
-			}
-			// Valid Bearer format, extract to context
-			// (validation happens in downstream middleware)
-		} else {
-			// Pass through non-Bearer schemes (e.g., Basic auth)
-			handler.ServeHTTP(w, r)
+		if !strings.HasPrefix(authLower, "bearer") {
+			// Reject non-Bearer schemes (OAuth endpoints require Bearer tokens only)
+			s.Return401(w)
+			return
+		}
+
+		// Malformed Bearer token (no space after "Bearer")
+		if !strings.HasPrefix(authLower, "bearer ") {
+			s.Return401InvalidToken(w)
 			return
 		}
 

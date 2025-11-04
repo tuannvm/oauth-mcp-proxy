@@ -39,7 +39,7 @@ import (
 // The returned handler automatically:
 // - Returns 401 with WWW-Authenticate headers if Bearer token missing
 // - Passes through OPTIONS requests (CORS pre-flight)
-// - Passes through non-Bearer auth schemes (e.g., Basic auth)
+// - Rejects non-Bearer auth schemes (OAuth-only endpoint)
 //
 // The returned oauth.Server instance provides access to:
 // - LogStartup() - Log OAuth endpoint information
@@ -76,16 +76,15 @@ func WithOAuth(mux *http.ServeMux, cfg *oauth.Config, mcpServer *mcp.Server) (*o
 		}
 
 		// Check if it's a Bearer token (case-insensitive per OAuth 2.0 spec)
-		if strings.HasPrefix(authLower, "bearer") {
-			// Malformed Bearer token (no space after "Bearer")
-			if !strings.HasPrefix(authLower, "bearer ") {
-				oauthServer.Return401InvalidToken(w)
-				return
-			}
-			// Valid Bearer format, continue to validation
-		} else {
-			// Pass through non-Bearer schemes (e.g., Basic auth)
-			mcpHandler.ServeHTTP(w, r)
+		if !strings.HasPrefix(authLower, "bearer") {
+			// Reject non-Bearer schemes (OAuth endpoints require Bearer tokens only)
+			oauthServer.Return401(w)
+			return
+		}
+
+		// Malformed Bearer token (no space after "Bearer")
+		if !strings.HasPrefix(authLower, "bearer ") {
+			oauthServer.Return401InvalidToken(w)
 			return
 		}
 
