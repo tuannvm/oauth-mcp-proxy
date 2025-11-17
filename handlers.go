@@ -586,7 +586,14 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 	// Add ID token if present
 	if idToken, ok := token.Extra("id_token").(string); ok {
-		response["id_token"] = idToken
+		if h.config.Mode == "proxy" {
+			// In proxy mode, trino-mcp is going to expect to receive id tokens
+			// that can be validated, not access tokens which can be opaque or
+			// from another issuer (e.g. Microsoft Graph when using Azure).
+			response["access_token"] = idToken
+		} else {
+			response["id_token"] = idToken
+        }
 	}
 
 	// Add scope if present
