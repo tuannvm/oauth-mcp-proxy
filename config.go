@@ -2,6 +2,8 @@ package oauth
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
@@ -18,6 +20,7 @@ type Config struct {
 	Audience     string
 	ClientID     string
 	ClientSecret string
+	Scopes       []string // OIDC scopes
 
 	// Server configuration
 	ServerURL string // Full URL of the MCP server
@@ -31,6 +34,11 @@ type Config struct {
 	// Implement the Logger interface (Debug, Info, Warn, Error methods) to
 	// integrate with your application's logging system (e.g., zap, logrus).
 	Logger Logger
+
+	SkipAudienceCheck bool // whether to skip audience validation
+	// The issuer URL to use for issuer validation.
+	// This should only be set if the issuer in the token differs from the standard issuer URL.
+	ValidatorIssuer string
 }
 
 // Validate validates the configuration
@@ -119,11 +127,13 @@ func SetupOAuth(cfg *Config) (provider.TokenValidator, error) {
 func createValidator(cfg *Config, logger Logger) (provider.TokenValidator, error) {
 	// Convert root Config to provider.Config
 	providerCfg := &provider.Config{
-		Provider:  cfg.Provider,
-		Issuer:    cfg.Issuer,
-		Audience:  cfg.Audience,
-		JWTSecret: cfg.JWTSecret,
-		Logger:    logger,
+		Provider:          cfg.Provider,
+		Issuer:            cfg.Issuer,
+		Audience:          cfg.Audience,
+		JWTSecret:         cfg.JWTSecret,
+		Logger:            logger,
+		SkipAudienceCheck: cfg.SkipAudienceCheck,
+		ValidatorIssuer:   cfg.ValidatorIssuer,
 	}
 
 	var validator provider.TokenValidator
@@ -217,9 +227,27 @@ func (b *ConfigBuilder) WithJWTSecret(secret []byte) *ConfigBuilder {
 	return b
 }
 
+// WithScopes sets the OIDC scopes
+func (b *ConfigBuilder) WithScopes(scopes []string) *ConfigBuilder {
+	b.config.Scopes = scopes
+	return b
+}
+
 // WithLogger sets the logger
 func (b *ConfigBuilder) WithLogger(logger Logger) *ConfigBuilder {
 	b.config.Logger = logger
+	return b
+}
+
+// WithSkipAudienceCheck sets audience check toggle
+func (b *ConfigBuilder) WithSkipAudienceCheck(skipAudienceCheck bool) *ConfigBuilder {
+	b.config.SkipAudienceCheck = skipAudienceCheck
+	return b
+}
+
+// WithValidatorIssuer sets the validator issuer URL
+func (b *ConfigBuilder) WithValidatorIssuer(validatorIssuer string) *ConfigBuilder {
+	b.config.ValidatorIssuer = validatorIssuer
 	return b
 }
 
@@ -281,6 +309,12 @@ func FromEnv() (*Config, error) {
 
 	jwtSecret := getEnv("JWT_SECRET", "")
 
+	scopes := []string{}
+	scopesEnv := getEnv("OIDC_SCOPES", "")
+	if scopesEnv != "" {
+		scopes = strings.Split(scopesEnv, " ")
+	}
+
 	return NewConfigBuilder().
 		WithMode(getEnv("OAUTH_MODE", "")).
 		WithProvider(getEnv("OAUTH_PROVIDER", "")).
@@ -289,7 +323,23 @@ func FromEnv() (*Config, error) {
 		WithAudience(getEnv("OIDC_AUDIENCE", "")).
 		WithClientID(getEnv("OIDC_CLIENT_ID", "")).
 		WithClientSecret(getEnv("OIDC_CLIENT_SECRET", "")).
+		WithScopes(scopes).
+		WithSkipAudienceCheck(parseBoolEnv("OIDC_SKIP_AUDIENCE_CHECK", false)).
+		WithValidatorIssuer(getEnv("OIDC_VALIDATOR_ISSUER", "")).
 		WithServerURL(serverURL).
 		WithJWTSecret([]byte(jwtSecret)).
 		Build()
+}
+
+// parseBoolEnv parses a boolean environment variable
+func parseBoolEnv(key string, defaultVal bool) bool {
+	val := getEnv(key, "")
+	if val == "" {
+		return defaultVal
+	}
+	parsed, err := strconv.ParseBool(val)
+	if err != nil {
+		return defaultVal
+	}
+	return parsed
 }

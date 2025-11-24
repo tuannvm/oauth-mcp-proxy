@@ -46,6 +46,7 @@ type OAuth2Config struct {
 	Audience     string
 	ClientID     string
 	ClientSecret string
+	Scopes       []string // OIDC scopes
 
 	// Server configuration
 	MCPHost string
@@ -96,7 +97,7 @@ func NewOAuth2Handler(cfg *OAuth2Config, logger Logger) *OAuth2Handler {
 		ClientID:     cfg.ClientID,
 		ClientSecret: cfg.ClientSecret,
 		Endpoint:     endpoint,
-		Scopes:       []string{"openid", "profile", "email"},
+		Scopes:       cfg.Scopes,
 	}
 
 	// Log client configuration type for debugging
@@ -177,6 +178,11 @@ func NewOAuth2ConfigFromConfig(cfg *Config, version string) *OAuth2Config {
 		mcpURL = getEnv("MCP_URL", fmt.Sprintf("%s://%s:%s", scheme, mcpHost, mcpPort))
 	}
 
+	scopes := cfg.Scopes
+	if len(scopes) == 0 {
+		scopes = []string{"openid", "profile", "email"}
+	}
+
 	return &OAuth2Config{
 		Enabled:         true,
 		Mode:            cfg.Mode,
@@ -186,6 +192,7 @@ func NewOAuth2ConfigFromConfig(cfg *Config, version string) *OAuth2Config {
 		Audience:        cfg.Audience,
 		ClientID:        cfg.ClientID,
 		ClientSecret:    cfg.ClientSecret,
+		Scopes:          scopes,
 		MCPHost:         mcpHost,
 		MCPPort:         mcpPort,
 		MCPURL:          mcpURL,
@@ -287,7 +294,7 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 	clientID := query.Get("client_id")
 
 	h.logger.Info("OAuth2: Authorization request - client_id: %s, redirect_uri: %s, code_challenge: %s",
-		clientID, clientRedirectURI, truncateString(codeChallenge, 10))
+		clientID, clientRedirectURI, codeChallenge)
 
 	// Determine redirect URI strategy based on configuration
 	var redirectURI string

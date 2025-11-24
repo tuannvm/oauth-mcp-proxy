@@ -138,7 +138,7 @@ func (h *OAuth2Handler) HandleProtectedResourceMetadata(w http.ResponseWriter, r
 		"resource_documentation":                fmt.Sprintf("%s/docs", h.config.MCPURL),
 		"resource_policy_uri":                   fmt.Sprintf("%s/policy", h.config.MCPURL),
 		"resource_tos_uri":                      fmt.Sprintf("%s/tos", h.config.MCPURL),
-		"scopes_supported":                      []string{"openid", "profile", "email"},
+		"scopes_supported":                      h.config.Scopes,
 	}
 
 	// Encode and send response
@@ -243,7 +243,7 @@ func (h *OAuth2Handler) HandleOIDCDiscovery(w http.ResponseWriter, r *http.Reque
 		"token_endpoint_auth_methods_supported": []string{"none"},
 		"code_challenge_methods_supported":      []string{"plain", "S256"},
 		"subject_types_supported":               []string{"public"},
-		"scopes_supported":                      []string{"openid", "profile", "email"},
+		"scopes_supported":                      h.config.Scopes,
 	}
 
 	// Add provider-specific fields
@@ -283,7 +283,7 @@ func (h *OAuth2Handler) GetAuthorizationServerMetadata() map[string]interface{} 
 			"grant_types_supported":                 []string{"authorization_code"},
 			"token_endpoint_auth_methods_supported": []string{"none"},
 			"code_challenge_methods_supported":      []string{"plain", "S256"},
-			"scopes_supported":                      []string{"openid", "profile", "email"},
+			"scopes_supported":                      h.config.Scopes,
 		}
 
 		// Add provider-specific endpoints
@@ -315,7 +315,7 @@ func (h *OAuth2Handler) GetAuthorizationServerMetadata() map[string]interface{} 
 			"grant_types_supported":                 []string{"authorization_code"},
 			"token_endpoint_auth_methods_supported": []string{"none"},
 			"code_challenge_methods_supported":      []string{"plain", "S256"},
-			"scopes_supported":                      []string{"openid", "profile", "email"},
+			"scopes_supported":                      h.config.Scopes,
 		}
 	}
 

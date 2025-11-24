@@ -30,11 +30,13 @@ type Logger interface {
 
 // Config holds OAuth configuration (subset needed by provider)
 type Config struct {
-	Provider  string
-	Issuer    string
-	Audience  string
-	JWTSecret []byte
-	Logger    Logger
+	Provider          string
+	Issuer            string
+	Audience          string
+	JWTSecret         []byte
+	Logger            Logger
+	SkipAudienceCheck bool
+	ValidatorIssuer   string
 }
 
 // TokenValidator interface for OAuth token validation
@@ -52,10 +54,11 @@ type HMACValidator struct {
 
 // OIDCValidator validates JWT tokens using OIDC/JWKS (Okta, Google, Azure)
 type OIDCValidator struct {
-	verifier *oidc.IDTokenVerifier
-	provider *oidc.Provider
-	audience string
-	logger   Logger
+	verifier        *oidc.IDTokenVerifier
+	provider        *oidc.Provider
+	audience        string
+	TokenValidators []func(claims jwt.MapClaims) error
+	logger          Logger
 }
 
 // Initialize sets up the HMAC validator with JWT secret and audience
@@ -90,7 +93,6 @@ func (v *HMACValidator) ValidateToken(ctx context.Context, tokenString string) (
 		}
 		return []byte(v.secret), nil
 	})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse and validate token: %w", err)
 	}
@@ -190,7 +192,9 @@ func (v *OIDCValidator) Initialize(cfg *Config) error {
 			MaxIdleConnsPerHost: 10,
 		},
 	}
-
+	if cfg.ValidatorIssuer != "" {
+		ctx = oidc.InsecureIssuerURLContext(ctx, cfg.ValidatorIssuer)
+	}
 	// Create OIDC provider with custom HTTP client
 	provider, err := oidc.NewProvider(
 		oidc.ClientContext(ctx, httpClient),
@@ -204,15 +208,17 @@ func (v *OIDCValidator) Initialize(cfg *Config) error {
 	verifier := provider.Verifier(&oidc.Config{
 		ClientID:             cfg.Audience, // Note: go-oidc uses ClientID field for audience validation - see https://github.com/coreos/go-oidc/blob/v3/oidc/verify.go#L85
 		SupportedSigningAlgs: []string{oidc.RS256, oidc.ES256},
-		SkipClientIDCheck:    false, // Always validate if ClientID is provided
-		SkipExpiryCheck:      false, // Verify expiration
-		SkipIssuerCheck:      false, // Verify issuer
+		SkipClientIDCheck:    cfg.SkipAudienceCheck,
+		SkipExpiryCheck:      false,
+		SkipIssuerCheck:      false,
 	})
-
-	v.logger.Info("OAuth: OIDC validator initialized with audience validation: %s", cfg.Audience)
 
 	v.provider = provider
 	v.verifier = verifier
+	if !cfg.SkipAudienceCheck {
+		v.logger.Info("OAuth: OIDC validator initialized with audience validation: %s", cfg.Audience)
+		v.TokenValidators = append(v.TokenValidators, v.validateAudience)
+	}
 	return nil
 }
 
@@ -256,9 +262,12 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (
 		return nil, fmt.Errorf("failed to extract raw claims: %w", err)
 	}
 
-	// Validate audience claim for security (explicit check)
-	if err := v.validateAudience(rawClaims); err != nil {
-		return nil, fmt.Errorf("audience validation failed: %w", err)
+	// Run extra validation functions
+	for i, fn := range v.TokenValidators {
+		err := fn(rawClaims)
+		if err != nil {
+			return nil, fmt.Errorf("validation function %d failed with error: %w", i, err)
+		}
 	}
 
 	return &User{
