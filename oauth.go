@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Vungle/oauth-mcp-proxy/provider"
 	mcpserver "github.com/mark3labs/mcp-go/server"
+	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
 // Server represents an OAuth authentication server instance.

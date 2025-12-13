@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Vungle/oauth-mcp-proxy/provider"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
 // TestContextPropagation validates Phase 2.1 context propagation fix

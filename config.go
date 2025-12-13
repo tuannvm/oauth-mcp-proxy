@@ -3,7 +3,7 @@ package oauth
 import (
 	"fmt"
 
-	"github.com/Vungle/oauth-mcp-proxy/provider"
+	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
 // Config holds OAuth configuration

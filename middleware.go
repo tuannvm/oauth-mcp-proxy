@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Vungle/oauth-mcp-proxy/provider"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
 // Middleware returns an authentication middleware for MCP tools.

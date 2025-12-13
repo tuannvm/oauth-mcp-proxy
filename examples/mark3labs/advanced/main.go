@@ -7,10 +7,10 @@ import (
 	"net/http"
 	"os"
 
-	oauth "github.com/Vungle/oauth-mcp-proxy"
-	"github.com/Vungle/oauth-mcp-proxy/mark3labs"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
+	oauth "github.com/tuannvm/oauth-mcp-proxy"
+	"github.com/tuannvm/oauth-mcp-proxy/mark3labs"
 )
 
 func main() {

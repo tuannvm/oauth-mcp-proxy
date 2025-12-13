@@ -7,9 +7,9 @@ import (
 	"net/http"
 	"os"
 
-	oauth "github.com/Vungle/oauth-mcp-proxy"
-	mcpoauth "github.com/Vungle/oauth-mcp-proxy/mcp"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	oauth "github.com/tuannvm/oauth-mcp-proxy"
+	mcpoauth "github.com/tuannvm/oauth-mcp-proxy/mcp"
 )
 
 func main() {

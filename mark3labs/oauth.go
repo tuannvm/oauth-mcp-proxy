@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"net/http"
 
-	oauth "github.com/Vungle/oauth-mcp-proxy"
 	mcpserver "github.com/mark3labs/mcp-go/server"
+	oauth "github.com/tuannvm/oauth-mcp-proxy"
 )
 
 // WithOAuth returns a server option that enables OAuth authentication

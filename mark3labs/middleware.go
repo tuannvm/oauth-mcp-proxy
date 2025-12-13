@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	oauth "github.com/Vungle/oauth-mcp-proxy"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	oauth "github.com/tuannvm/oauth-mcp-proxy"
 )
 
 // NewMiddleware creates an authentication middleware for mark3labs/mcp-go SDK.

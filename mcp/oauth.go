@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	oauth "github.com/Vungle/oauth-mcp-proxy"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	oauth "github.com/tuannvm/oauth-mcp-proxy"
 )
 
 // WithOAuth returns an OAuth-protected HTTP handler for the official

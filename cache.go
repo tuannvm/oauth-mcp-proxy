@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Vungle/oauth-mcp-proxy/provider"
+	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
 // Re-export User from provider for backwards compatibility

@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Vungle/oauth-mcp-proxy/provider"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
+	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
 
 // TestIntegration validates core architecture and integration.

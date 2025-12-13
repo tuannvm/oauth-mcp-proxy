@@ -1,4 +1,4 @@
-module github.com/Vungle/oauth-mcp-proxy
+module github.com/tuannvm/oauth-mcp-proxy
 
 go 1.24.9
 
