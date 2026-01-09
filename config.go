@@ -11,9 +11,10 @@ import (
 // Config holds OAuth configuration
 type Config struct {
 	// OAuth settings
-	Mode         string // "native" or "proxy"
-	Provider     string // "hmac", "okta", "google", "azure"
-	RedirectURIs string // Redirect URIs (single or comma-separated)
+	Mode             string // "native" or "proxy"
+	Provider         string // "hmac", "okta", "google", "azure"
+	RedirectURIs     string // Redirect URIs allowlist (single or comma-separated)
+	FixedRedirectURI string // Optional fixed redirect URI used for proxying callbacks
 
 	// OIDC configuration
 	Issuer       string
@@ -89,8 +90,8 @@ func (c *Config) Validate() error {
 		if c.ServerURL == "" {
 			return fmt.Errorf("proxy mode requires ServerURL")
 		}
-		if c.RedirectURIs == "" {
-			return fmt.Errorf("proxy mode requires RedirectURIs")
+		if c.RedirectURIs == "" && c.FixedRedirectURI == "" {
+			return fmt.Errorf("proxy mode requires RedirectURIs or FixedRedirectURI")
 		}
 	}
 
@@ -194,6 +195,12 @@ func (b *ConfigBuilder) WithProvider(provider string) *ConfigBuilder {
 // WithRedirectURIs sets the redirect URIs
 func (b *ConfigBuilder) WithRedirectURIs(uris string) *ConfigBuilder {
 	b.config.RedirectURIs = uris
+	return b
+}
+
+// WithFixedRedirectURI sets the fixed redirect URI used for proxying callbacks
+func (b *ConfigBuilder) WithFixedRedirectURI(uri string) *ConfigBuilder {
+	b.config.FixedRedirectURI = uri
 	return b
 }
 
@@ -319,6 +326,7 @@ func FromEnv() (*Config, error) {
 		WithMode(getEnv("OAUTH_MODE", "")).
 		WithProvider(getEnv("OAUTH_PROVIDER", "")).
 		WithRedirectURIs(getEnv("OAUTH_REDIRECT_URIS", "")).
+		WithFixedRedirectURI(getEnv("OAUTH_FIXED_REDIRECT_URI", "")).
 		WithIssuer(getEnv("OIDC_ISSUER", "")).
 		WithAudience(getEnv("OIDC_AUDIENCE", "")).
 		WithClientID(getEnv("OIDC_CLIENT_ID", "")).

@@ -194,11 +194,16 @@ func (h *OAuth2Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 	if redirectUris, ok := regRequest["redirect_uris"]; ok {
 		response["redirect_uris"] = redirectUris
 		h.logger.Info("OAuth2: Registration allowing client redirect URIs: %v", redirectUris)
-	} else if h.config.RedirectURIs != "" && !strings.Contains(h.config.RedirectURIs, ",") {
-		// Fallback to fixed redirect URI if no client URIs provided (single URI only)
-		trimmedURI := strings.TrimSpace(h.config.RedirectURIs)
+	} else if h.config.FixedRedirectURI != "" {
+		// Fallback to fixed redirect URI if no client URIs provided
+		trimmedURI := strings.TrimSpace(h.config.FixedRedirectURI)
 		response["redirect_uris"] = []string{trimmedURI}
 		h.logger.Info("OAuth2: Registration response using fixed redirect URI: %s", trimmedURI)
+	} else if h.config.RedirectURIs != "" && !strings.Contains(h.config.RedirectURIs, ",") {
+		// Backwards-compatible fallback: single RedirectURIs value
+		trimmedURI := strings.TrimSpace(h.config.RedirectURIs)
+		response["redirect_uris"] = []string{trimmedURI}
+		h.logger.Info("OAuth2: Registration response using single redirect URI from RedirectURIs: %s", trimmedURI)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

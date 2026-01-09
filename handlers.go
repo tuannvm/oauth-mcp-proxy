@@ -40,6 +40,8 @@ type OAuth2Config struct {
 	Mode         string // "native" or "proxy"
 	Provider     string
 	RedirectURIs string
+	// FixedRedirectURI is an optional fixed redirect URI used when proxying callbacks
+	FixedRedirectURI string
 
 	// OIDC configuration
 	Issuer       string
@@ -184,21 +186,22 @@ func NewOAuth2ConfigFromConfig(cfg *Config, version string) *OAuth2Config {
 	}
 
 	return &OAuth2Config{
-		Enabled:         true,
-		Mode:            cfg.Mode,
-		Provider:        cfg.Provider,
-		RedirectURIs:    cfg.RedirectURIs,
-		Issuer:          cfg.Issuer,
-		Audience:        cfg.Audience,
-		ClientID:        cfg.ClientID,
-		ClientSecret:    cfg.ClientSecret,
-		Scopes:          scopes,
-		MCPHost:         mcpHost,
-		MCPPort:         mcpPort,
-		MCPURL:          mcpURL,
-		Scheme:          scheme,
-		Version:         version,
-		stateSigningKey: cfg.JWTSecret,
+		Enabled:          true,
+		Mode:             cfg.Mode,
+		Provider:         cfg.Provider,
+		RedirectURIs:     cfg.RedirectURIs,
+		FixedRedirectURI: cfg.FixedRedirectURI,
+		Issuer:           cfg.Issuer,
+		Audience:         cfg.Audience,
+		ClientID:         cfg.ClientID,
+		ClientSecret:     cfg.ClientSecret,
+		Scopes:           scopes,
+		MCPHost:          mcpHost,
+		MCPPort:          mcpPort,
+		MCPURL:           mcpURL,
+		Scheme:           scheme,
+		Version:          version,
+		stateSigningKey:  cfg.JWTSecret,
 	}
 }
 
@@ -298,12 +301,22 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 
 	// Determine redirect URI strategy based on configuration
 	var redirectURI string
-	hasFixedRedirect := h.config.RedirectURIs != "" && !strings.Contains(h.config.RedirectURIs, ",")
+	actualState := state
 
-	if hasFixedRedirect {
+	if h.config.RedirectURIs != "" {
+		// Allowlist mode: Client's URI must be in allowlist, used directly (no proxy)
+		if h.isValidRedirectURI(clientRedirectURI) {
+			redirectURI = clientRedirectURI
+			h.logger.Info("OAuth2: Allowlist mode - using client URI from allowlist: %s", redirectURI)
+		} else {
+			h.logger.Warn("SECURITY: Redirect URI not in allowlist: %s from %s", clientRedirectURI, r.RemoteAddr)
+			h.logger.Info("SECURITY: Will try fixed redirect mode next")
+		}
+	}
+
+	if redirectURI == "" && h.config.FixedRedirectURI != "" {
 		// Fixed redirect mode: Use server's redirect URI to OAuth provider, proxy back to client
-		redirectURI = strings.TrimSpace(h.config.RedirectURIs)
-		h.logger.Info("OAuth2: Fixed redirect mode - using server URI: %s (will proxy to client: %s)", redirectURI, clientRedirectURI)
+		h.logger.Info("OAuth2: Fixed redirect mode - using server URI: %s (will proxy to client: %s)", h.config.FixedRedirectURI, clientRedirectURI)
 
 		// Validate client redirect URI format and security
 		if clientRedirectURI == "" {
@@ -347,30 +360,9 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "Fixed redirect mode only allows localhost redirect URIs for security. Use allowlist mode for production.", http.StatusBadRequest)
 			return
 		}
-
+		redirectURI = strings.TrimSpace(h.config.FixedRedirectURI)
 		h.logger.Info("OAuth2: Validated localhost redirect URI for proxy: %s", clientRedirectURI)
-	} else if h.config.RedirectURIs != "" {
-		// Allowlist mode: Client's URI must be in allowlist, used directly (no proxy)
-		if !h.isValidRedirectURI(clientRedirectURI) {
-			h.logger.Warn("SECURITY: Redirect URI not in allowlist: %s from %s", clientRedirectURI, r.RemoteAddr)
-			http.Error(w, "Invalid redirect_uri", http.StatusBadRequest)
-			return
-		}
-		redirectURI = clientRedirectURI
-		h.logger.Info("OAuth2: Allowlist mode - using client URI from allowlist: %s", redirectURI)
-	} else {
-		// No configuration: Reject for security
-		h.logger.Warn("SECURITY: No redirect URIs configured, rejecting: %s from %s", clientRedirectURI, r.RemoteAddr)
-		http.Error(w, "Invalid redirect_uri", http.StatusBadRequest)
-		return
-	}
-
-	// Update OAuth2 config with redirect URI
-	h.oauth2Config.RedirectURL = redirectURI
-
-	// For fixed redirect mode, create signed state with client redirect URI
-	actualState := state
-	if hasFixedRedirect {
+		// For fixed redirect mode, create signed state with client redirect URI
 		// Create state data with redirect URI
 		stateData := map[string]string{
 			"state":    state,
@@ -388,6 +380,16 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		actualState = signedState
 		h.logger.Info("OAuth2: Signed state for proxy callback (length: %d)", len(signedState))
 	}
+
+	if redirectURI == "" {
+		// No configuration: Reject for security
+		h.logger.Warn("SECURITY: No redirect URIs configured, rejecting: %s from %s", clientRedirectURI, r.RemoteAddr)
+		http.Error(w, "Invalid redirect_uri", http.StatusBadRequest)
+		return
+	}
+
+	// Update OAuth2 config with redirect URI
+	h.oauth2Config.RedirectURL = redirectURI
 
 	// Create authorization URL
 	authURL := h.oauth2Config.AuthCodeURL(actualState, oauth2.AccessTypeOffline)
@@ -449,7 +451,7 @@ func (h *OAuth2Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If using fixed redirect URI, handle proxy callback
-	if h.config.RedirectURIs != "" && !strings.Contains(h.config.RedirectURIs, ",") {
+	if h.config.FixedRedirectURI != "" {
 		// Verify and decode signed state parameter
 		stateData, err := h.verifyState(state)
 		if err != nil {
@@ -546,8 +548,8 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 		// Set redirect URI for token exchange
 		redirectURI := clientRedirectURI
-		if h.config.RedirectURIs != "" && !strings.Contains(h.config.RedirectURIs, ",") {
-			redirectURI = strings.TrimSpace(h.config.RedirectURIs)
+		if h.config.FixedRedirectURI != "" && !h.isValidRedirectURI(clientRedirectURI) {
+			redirectURI = strings.TrimSpace(h.config.FixedRedirectURI)
 			h.logger.Info("OAuth2: Token exchange using fixed redirect URI: %s", redirectURI)
 		}
 
@@ -802,8 +804,6 @@ func isLocalhostURI(uri string) bool {
 // isValidRedirectURI validates redirect URI against allowlist for security
 func (h *OAuth2Handler) isValidRedirectURI(uri string) bool {
 	if h.config.RedirectURIs == "" {
-		// No redirect URIs configured - reject all redirects for security
-		h.logger.Warn("WARNING: No OAuth redirect URIs configured, rejecting redirect: %s", uri)
 		return false
 	}
 
