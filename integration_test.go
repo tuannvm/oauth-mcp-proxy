@@ -47,7 +47,7 @@ func TestIntegration(t *testing.T) {
 		tokenString, _ := token.SignedString(cfg.JWTSecret)
 
 		// Validate token using provider package directly
-		user, err := validator.ValidateToken(context.Background(), tokenString)
+		user, _, err := validator.ValidateToken(context.Background(), tokenString)
 		if err != nil {
 			t.Fatalf("ValidateToken failed: %v", err)
 		}
@@ -90,7 +90,7 @@ func TestIntegration(t *testing.T) {
 
 		tokenString, _ := token.SignedString(rootCfg.JWTSecret)
 
-		user, err := validator.ValidateToken(context.Background(), tokenString)
+		user, _, err := validator.ValidateToken(context.Background(), tokenString)
 		if err != nil {
 			t.Fatalf("ValidateToken after conversion failed: %v", err)
 		}
@@ -276,7 +276,7 @@ func TestValidatorIntegration(t *testing.T) {
 
 		tokenString, _ := token.SignedString(cfg.JWTSecret)
 
-		user, err := v.ValidateToken(context.Background(), tokenString)
+		user, _, err := v.ValidateToken(context.Background(), tokenString)
 		if err != nil {
 			t.Fatalf("ValidateToken failed: %v", err)
 		}

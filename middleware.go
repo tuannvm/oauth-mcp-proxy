@@ -2,12 +2,10 @@ package oauth
 
 import (
 	"context"
-	"crypto/sha256"
 	"fmt"
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -19,8 +17,7 @@ import (
 //
 // The middleware:
 //  1. Extracts OAuth token from context (set by CreateHTTPContextFunc)
-//  2. Checks token cache (5-minute TTL)
-//  3. Validates token using configured provider if not cached
+//  2. Validates the token
 //  4. Adds User to context via userContextKey
 //  5. Passes request to tool handler with authenticated context
 //
@@ -38,36 +35,13 @@ func (s *Server) Middleware() func(server.ToolHandlerFunc) server.ToolHandlerFun
 				return nil, fmt.Errorf("authentication required: missing OAuth token")
 			}
 
-			// Create token hash for caching
-			tokenHash := fmt.Sprintf("%x", sha256.Sum256([]byte(tokenString)))
-
-			// Check cache first
-			if cached, exists := s.cache.getCachedToken(tokenHash); exists {
-				s.logger.Info("Using cached authentication for tool: %s (user: %s)", req.Params.Name, cached.User.Username)
-				ctx = context.WithValue(ctx, userContextKey, cached.User)
-				return next(ctx, req)
-			}
-
-			// Log token hash for debugging (prevents sensitive data exposure)
-			tokenHashFull := fmt.Sprintf("%x", sha256.Sum256([]byte(tokenString)))
-			tokenHashPreview := tokenHashFull[:16] + "..."
-			s.logger.Info("Validating token for tool %s (hash: %s)", req.Params.Name, tokenHashPreview)
-
-			// Validate token using configured provider (with request context for timeout/cancellation)
-			user, err := s.validator.ValidateToken(ctx, tokenString)
+			user, err := s.ValidateTokenCached(ctx, tokenString)
 			if err != nil {
 				s.logger.Error("Token validation failed for tool %s: %v", req.Params.Name, err)
-				return nil, fmt.Errorf("authentication failed: %w", err)
+				return nil, err
 			}
-
-			// Cache the validation result (expire in 5 minutes)
-			expiresAt := time.Now().Add(5 * time.Minute)
-			s.cache.setCachedToken(tokenHash, user, expiresAt)
-
-			// Add user to context for downstream handlers
 			ctx = context.WithValue(ctx, userContextKey, user)
-			s.logger.Info("Authenticated user %s for tool: %s (cached for 5 minutes)", user.Username, req.Params.Name)
-
+			s.logger.Info("Authenticated user %s for tool: %s", user.Username, req.Params.Name)
 			return next(ctx, req)
 		}
 	}

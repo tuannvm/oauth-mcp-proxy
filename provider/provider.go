@@ -41,7 +41,7 @@ type Config struct {
 
 // TokenValidator interface for OAuth token validation
 type TokenValidator interface {
-	ValidateToken(ctx context.Context, token string) (*User, error)
+	ValidateToken(ctx context.Context, token string) (*User, time.Time, error)
 	Initialize(cfg *Config) error
 }
 
@@ -80,7 +80,7 @@ func (v *HMACValidator) Initialize(cfg *Config) error {
 }
 
 // ValidateToken validates JWT token using HMAC-SHA256
-func (v *HMACValidator) ValidateToken(ctx context.Context, tokenString string) (*User, error) {
+func (v *HMACValidator) ValidateToken(ctx context.Context, tokenString string) (*User, time.Time, error) {
 	// Note: ctx parameter accepted for interface compliance, but HMAC validation is local-only (no I/O)
 	// Remove Bearer prefix if present
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
@@ -94,26 +94,26 @@ func (v *HMACValidator) ValidateToken(ctx context.Context, tokenString string) (
 		return []byte(v.secret), nil
 	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse and validate token: %w", err)
+		return nil, time.Time{}, fmt.Errorf("failed to parse and validate token: %w", err)
 	}
 
 	if !token.Valid {
-		return nil, fmt.Errorf("invalid token")
+		return nil, time.Time{}, fmt.Errorf("invalid token")
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, fmt.Errorf("invalid token claims")
+		return nil, time.Time{}, fmt.Errorf("invalid token claims")
 	}
 
 	// Validate required claims including audience
 	if err := validateTokenClaims(claims); err != nil {
-		return nil, fmt.Errorf("token validation failed: %w", err)
+		return nil, time.Time{}, fmt.Errorf("token validation failed: %w", err)
 	}
 
 	// Validate audience claim for security
 	if err := v.validateAudience(claims); err != nil {
-		return nil, fmt.Errorf("audience validation failed: %w", err)
+		return nil, time.Time{}, fmt.Errorf("audience validation failed: %w", err)
 	}
 
 	// Extract user information
@@ -124,10 +124,17 @@ func (v *HMACValidator) ValidateToken(ctx context.Context, tokenString string) (
 	}
 
 	if user.Subject == "" {
-		return nil, fmt.Errorf("missing subject in token")
+		return nil, time.Time{}, fmt.Errorf("missing subject in token")
 	}
 
-	return user, nil
+	// Extract expiry from already-parsed claims defaulting to 5 minutes in the
+	// future.
+	expiry := time.Now().Add(5 * time.Minute)
+	if expVal, ok := claims["exp"].(float64); ok {
+		expiry = time.Unix(int64(expVal), 0)
+	}
+
+	return user, expiry, nil
 }
 
 // validateAudience validates the audience claim matches the expected value
@@ -223,7 +230,7 @@ func (v *OIDCValidator) Initialize(cfg *Config) error {
 }
 
 // ValidateToken validates JWT token using OIDC/JWKS
-func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (*User, error) {
+func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (*User, time.Time, error) {
 	// Remove Bearer prefix if present
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
@@ -234,7 +241,7 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (
 	// go-oidc handles RSA signature validation, JWKS fetching, and key rotation
 	idToken, err := v.verifier.Verify(ctx, tokenString)
 	if err != nil {
-		return nil, fmt.Errorf("token verification failed: %w", err)
+		return nil, time.Time{}, fmt.Errorf("token verification failed: %w", err)
 	}
 
 	// Extract claims from verified token
@@ -253,20 +260,20 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (
 	}
 
 	if err := idToken.Claims(&claims); err != nil {
-		return nil, fmt.Errorf("failed to extract claims: %w", err)
+		return nil, time.Time{}, fmt.Errorf("failed to extract claims: %w", err)
 	}
 
 	// Extract raw claims for audience validation
 	var rawClaims jwt.MapClaims
 	if err := idToken.Claims(&rawClaims); err != nil {
-		return nil, fmt.Errorf("failed to extract raw claims: %w", err)
+		return nil, time.Time{}, fmt.Errorf("failed to extract raw claims: %w", err)
 	}
 
 	// Run extra validation functions
 	for i, fn := range v.TokenValidators {
 		err := fn(rawClaims)
 		if err != nil {
-			return nil, fmt.Errorf("validation function %d failed with error: %w", i, err)
+			return nil, time.Time{}, fmt.Errorf("validation function %d failed with error: %w", i, err)
 		}
 	}
 
@@ -274,7 +281,7 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (
 		Subject:  claims.Subject,
 		Username: claims.PreferredUsername,
 		Email:    claims.Email,
-	}, nil
+	}, idToken.Expiry, nil
 }
 
 // validateAudience validates the audience claim matches the expected value for OIDC tokens

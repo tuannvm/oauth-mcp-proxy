@@ -41,7 +41,7 @@ func TestContextPropagation(t *testing.T) {
 
 		// Test 1: Normal context works
 		ctx := context.Background()
-		user, err := server.validator.ValidateToken(ctx, tokenString)
+		user, _, err := server.validator.ValidateToken(ctx, tokenString)
 		if err != nil {
 			t.Fatalf("ValidateToken with normal context failed: %v", err)
 		}
@@ -83,7 +83,7 @@ func TestContextPropagation(t *testing.T) {
 
 		// For HMAC validator (local-only), this still succeeds
 		// because HMAC doesn't do I/O and doesn't check context cancellation
-		user, err := server.validator.ValidateToken(ctx, tokenString)
+		user, _, err := server.validator.ValidateToken(ctx, tokenString)
 
 		// HMAC validation is local-only, so it succeeds even with cancelled context
 		if err != nil {
@@ -126,7 +126,7 @@ func TestContextPropagation(t *testing.T) {
 		defer cancel()
 
 		// Validate with timeout context
-		user, err := server.validator.ValidateToken(ctx, tokenString)
+		user, _, err := server.validator.ValidateToken(ctx, tokenString)
 		if err != nil {
 			t.Fatalf("ValidateToken with timeout context failed: %v", err)
 		}

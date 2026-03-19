@@ -24,11 +24,12 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 	}
 
 	t.Run("ValidAudience", func(t *testing.T) {
+		tokenExpiration := time.Now().Add(time.Hour).Unix()
 		// Create token with correct audience
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"sub":   "test-user",
 			"aud":   "test-service-audience",
-			"exp":   time.Now().Add(time.Hour).Unix(),
+			"exp":   tokenExpiration,
 			"iat":   time.Now().Unix(),
 			"email": "test@example.com",
 		})
@@ -38,13 +39,17 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 			t.Fatalf("Failed to sign token: %v", err)
 		}
 
-		user, err := validator.ValidateToken(context.Background(), tokenString)
+		user, expiration, err := validator.ValidateToken(context.Background(), tokenString)
 		if err != nil {
 			t.Errorf("Expected valid token to pass, got error: %v", err)
 		}
 
 		if user == nil || user.Subject != "test-user" {
 			t.Errorf("Expected valid user, got: %+v", user)
+		}
+
+		if expiration.Unix() != tokenExpiration {
+			t.Errorf("Expected token expiration %d got %d", tokenExpiration, expiration.Unix())
 		}
 	})
 
@@ -62,7 +67,7 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 			t.Fatalf("Failed to sign token: %v", err)
 		}
 
-		_, err = validator.ValidateToken(context.Background(), tokenString)
+		_, _, err = validator.ValidateToken(context.Background(), tokenString)
 		if err == nil {
 			t.Error("Expected token with wrong audience to fail validation")
 		}
@@ -85,7 +90,7 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 			t.Fatalf("Failed to sign token: %v", err)
 		}
 
-		_, err = validator.ValidateToken(context.Background(), tokenString)
+		_, _, err = validator.ValidateToken(context.Background(), tokenString)
 		if err == nil {
 			t.Error("Expected token without audience to fail validation")
 		}
@@ -109,7 +114,7 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 			t.Fatalf("Failed to sign token: %v", err)
 		}
 
-		user, err := validator.ValidateToken(context.Background(), tokenString)
+		user, _, err := validator.ValidateToken(context.Background(), tokenString)
 		if err != nil {
 			t.Errorf("Expected token with correct audience in array to pass, got error: %v", err)
 		}
@@ -133,7 +138,7 @@ func TestHMACValidator_AudienceValidation(t *testing.T) {
 			t.Fatalf("Failed to sign token: %v", err)
 		}
 
-		_, err = validator.ValidateToken(context.Background(), tokenString)
+		_, _, err = validator.ValidateToken(context.Background(), tokenString)
 		if err == nil {
 			t.Error("Expected token with wrong audience array to fail validation")
 		}
@@ -190,7 +195,6 @@ func TestHMACValidator_InitializationValidation(t *testing.T) {
 
 		validator := &HMACValidator{}
 		err := validator.Initialize(cfg)
-
 		if err != nil {
 			t.Errorf("Expected valid configuration to succeed, got error: %v", err)
 		}
@@ -236,7 +240,7 @@ func TestHMACValidator_SecurityValidation(t *testing.T) {
 		}
 
 		// This should FAIL - the vulnerability would allow this to pass
-		_, err = validator.ValidateToken(context.Background(), tokenString)
+		_, _, err = validator.ValidateToken(context.Background(), tokenString)
 		if err == nil {
 			t.Error("SECURITY VULNERABILITY: Cross-service token was accepted! This should fail.")
 		}
