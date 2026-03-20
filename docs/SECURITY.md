@@ -200,7 +200,9 @@ oauth.WithOAuth(mux, &oauth.Config{
 
 ### Cache Behavior
 
-- **Cache TTL:** 5 minutes (hardcoded in v0.1.0)
+- **Cache TTL:** Until the JWT `exp` claim, minus the configured expiry buffer.
+  Tokens inside the buffer are rejected, and tokens without `exp` fall back
+  to a 5-minute cache lifetime.
 - **Cache scope:** Per Server instance
 - **Cache key:** SHA-256 hash of token
 

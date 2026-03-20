@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -706,5 +707,158 @@ func TestWrapMCPEndpointWithValidToken(t *testing.T) {
 	}
 	if rec.Code != http.StatusOK {
 		t.Errorf("status = %d, want 200", rec.Code)
+	}
+}
+
+// TestValidateTokenCached tests that only non-expired tokens are cached.
+func TestValidateTokenCached(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		expirationFromNow time.Duration
+		tokenExpiryBuffer time.Duration
+		want              *User
+		wantErr           string
+	}{
+		{
+			name:              "success",
+			expirationFromNow: time.Minute,
+			want:              &User{Subject: "testuser"},
+		},
+		{
+			name:              "expired token",
+			expirationFromNow: -time.Minute,
+			wantErr:           "authentication failed: failed to parse and validate token: token has invalid claims: token is expired",
+		},
+		{
+			name:              "token expires in buffer",
+			tokenExpiryBuffer: 5 * time.Minute,
+			expirationFromNow: time.Minute,
+			wantErr:           "authentication failed: token expired or expiring too soon",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &Config{
+				Mode:              "native",
+				Provider:          "hmac",
+				Audience:          "api://test",
+				JWTSecret:         []byte("test-secret-key-must-be-32-bytes-long!"),
+				ServerURL:         "https://test-server.com",
+				Issuer:            "https://test.example.com",
+				TokenExpiryBuffer: tt.tokenExpiryBuffer,
+			}
+			srv, err := NewServer(cfg)
+			if err != nil {
+				t.Fatalf("NewServer: %v", err)
+			}
+
+			// Create a valid HMAC token
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+				"sub": "testuser",
+				"aud": "api://test",
+				"iss": "https://test.example.com",
+				"exp": time.Now().Add(tt.expirationFromNow).Unix(),
+			})
+			tokenString, err := token.SignedString(cfg.JWTSecret)
+			if err != nil {
+				t.Fatalf("SignedString: %v", err)
+			}
+
+			user, err := srv.ValidateTokenCached(context.Background(), tokenString)
+			if tt.wantErr != "" {
+				if err == nil {
+					t.Fatalf("expected error %q, got nil", tt.wantErr)
+				}
+				if err.Error() != tt.wantErr {
+					t.Errorf("expected error %q, got %q", tt.wantErr, err.Error())
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %s", err)
+			}
+			if !reflect.DeepEqual(user, tt.want) {
+				t.Errorf("expected user %v got user %v", tt.want, user)
+			}
+		})
+	}
+}
+
+// TestValidateTokenCached tests that the cache expires correctly.
+func TestValidateTokenCached_Expires(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name              string
+		expirationFromNow time.Duration
+		tokenExpiryBuffer time.Duration
+		wantErr           string
+	}{
+		{
+			name:              "default expiry buffer",
+			expirationFromNow: time.Second,
+			wantErr:           "authentication failed: failed to parse and validate token: token has invalid claims: token is expired",
+		},
+		{
+			name:              "custom expiry buffer",
+			expirationFromNow: 5 * time.Second,
+			tokenExpiryBuffer: 4 * time.Second,
+			wantErr:           "authentication failed: token expired or expiring too soon",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := &Config{
+				Mode:              "native",
+				Provider:          "hmac",
+				Audience:          "api://test",
+				JWTSecret:         []byte("test-secret-key-must-be-32-bytes-long!"),
+				ServerURL:         "https://test-server.com",
+				Issuer:            "https://test.example.com",
+				TokenExpiryBuffer: tt.tokenExpiryBuffer,
+			}
+			srv, err := NewServer(cfg)
+			if err != nil {
+				t.Fatalf("NewServer: %v", err)
+			}
+
+			// Create a valid HMAC token
+			token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+				"sub": "testuser",
+				"aud": "api://test",
+				"iss": "https://test.example.com",
+				"exp": time.Now().Add(tt.expirationFromNow).Unix(),
+			})
+			tokenString, err := token.SignedString(cfg.JWTSecret)
+			if err != nil {
+				t.Fatalf("SignedString: %v", err)
+			}
+
+			// Token is successfully verified and cached
+			_, err = srv.ValidateTokenCached(context.Background(), tokenString)
+			if err != nil {
+				t.Fatalf("unexpected error %s", err)
+			}
+
+			// Wait twice as long as the token should take to expire.
+			time.Sleep(2 * (tt.expirationFromNow - tt.tokenExpiryBuffer))
+
+			_, err = srv.ValidateTokenCached(context.Background(), tokenString)
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+
+			if err.Error() != tt.wantErr {
+				t.Errorf("expected error %q, got %q", tt.wantErr, err.Error())
+			}
+		})
 	}
 }

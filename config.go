@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
@@ -41,6 +42,11 @@ type Config struct {
 	// The issuer URL to use for issuer validation.
 	// This should only be set if the issuer in the token differs from the standard issuer URL.
 	ValidatorIssuer string
+
+	// TokenExpiryBuffer is subtracted from the JWT's exp claim to determine
+	// effective cache expiry. Tokens with less than this duration remaining
+	// are treated as expired and rejected. Defaults to 0 (no buffer).
+	TokenExpiryBuffer time.Duration
 }
 
 // Validate validates the configuration
@@ -94,6 +100,10 @@ func (c *Config) Validate() error {
 		if c.RedirectURIs == "" && c.FixedRedirectURI == "" {
 			return fmt.Errorf("proxy mode requires RedirectURIs or FixedRedirectURI")
 		}
+	}
+	// Validate TokenExpiryBuffer is positive.
+	if c.TokenExpiryBuffer < 0 {
+		return fmt.Errorf("TokenExpiryBuffer must be >= 0")
 	}
 
 	return nil
@@ -265,6 +275,13 @@ func (b *ConfigBuilder) WithValidatorIssuer(validatorIssuer string) *ConfigBuild
 	return b
 }
 
+// WithTokenExpiryBuffer sets the buffer subtracted from JWT exp for cache expiry.
+// Tokens with less than d remaining until expiry are treated as expired and rejected.
+func (b *ConfigBuilder) WithTokenExpiryBuffer(d time.Duration) *ConfigBuilder {
+	b.config.TokenExpiryBuffer = d
+	return b
+}
+
 // WithServerURL sets the full server URL directly
 func (b *ConfigBuilder) WithServerURL(url string) *ConfigBuilder {
 	b.config.ServerURL = url
@@ -329,6 +346,16 @@ func FromEnv() (*Config, error) {
 		scopes = strings.Split(scopesEnv, " ")
 	}
 
+	var tokenExpiryBuffer time.Duration
+	tokenExpiryBufferEnv := getEnv("TOKEN_EXPIRY_BUFFER", "")
+	if tokenExpiryBufferEnv != "" {
+		var err error
+		tokenExpiryBuffer, err = time.ParseDuration(tokenExpiryBufferEnv)
+		if err != nil {
+			return nil, fmt.Errorf("invalid token expiry buffer duration: %w", err)
+		}
+	}
+
 	return NewConfigBuilder().
 		WithMode(getEnv("OAUTH_MODE", "")).
 		WithProvider(getEnv("OAUTH_PROVIDER", "")).
@@ -342,6 +369,7 @@ func FromEnv() (*Config, error) {
 		WithScopes(scopes).
 		WithSkipAudienceCheck(parseBoolEnv("OIDC_SKIP_AUDIENCE_CHECK", false)).
 		WithValidatorIssuer(getEnv("OIDC_VALIDATOR_ISSUER", "")).
+		WithTokenExpiryBuffer(tokenExpiryBuffer).
 		WithServerURL(serverURL).
 		WithJWTSecret([]byte(jwtSecret)).
 		Build()

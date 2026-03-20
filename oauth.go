@@ -104,9 +104,9 @@ func (s *Server) RegisterHandlers(mux *http.ServeMux) {
 // This is the core validation method that SDK adapters can use.
 //
 // The method:
-//  1. Checks token cache (5-minute TTL)
+//  1. Checks token cache (keyed by SHA-256 hash)
 //  2. Validates token using configured provider if not cached
-//  3. Caches validation result for future requests
+//  3. Caches validation result until JWT exp (minus TokenExpiryBuffer)
 //  4. Returns authenticated User or error
 //
 // This method is used internally by both WrapHandler and adapter middleware.
@@ -120,16 +120,23 @@ func (s *Server) ValidateTokenCached(ctx context.Context, token string) (*User, 
 
 	s.logger.Info("Validating token (hash: %s...)", tokenHash[:16])
 
-	user, err := s.validator.ValidateToken(ctx, token)
+	user, expiry, err := s.validator.ValidateToken(ctx, token)
 	if err != nil {
 		s.logger.Error("Token validation failed: %v", err)
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
-	expiresAt := time.Now().Add(5 * time.Minute)
-	s.cache.setCachedToken(tokenHash, user, expiresAt)
+	if s.config != nil {
+		expiry = expiry.Add(-s.config.TokenExpiryBuffer)
+	}
+	if !time.Now().Before(expiry) {
+		s.logger.Info("Token rejected: expires within buffer (hash: %s...)", tokenHash[:16])
+		return nil, fmt.Errorf("authentication failed: token expired or expiring too soon")
+	}
 
-	s.logger.Info("Authenticated user %s (cached for 5 minutes)", user.Username)
+	s.cache.setCachedToken(tokenHash, user, expiry)
+
+	s.logger.Info("Authenticated user %s (cache expires at %s)", user.Username, expiry.Format(time.RFC3339))
 	return user, nil
 }
 
