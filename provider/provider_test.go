@@ -413,6 +413,23 @@ func TestOIDCValidator_GoogleTokenInfoClaimsValidation(t *testing.T) {
 			expectedEmail:    "",
 		},
 		{
+			name: "valid tokeninfo access token claims with user_id fallback",
+			validator: &OIDCValidator{
+				audience:          "my-client-id.apps.googleusercontent.com",
+				skipAudienceCheck: false,
+			},
+			claims: map[string]interface{}{
+				"aud":       "my-client-id.apps.googleusercontent.com",
+				"user_id":   "google-user-123",
+				"email":     "user@example.com",
+				"scope":     "openid email profile",
+				"issued_to": "my-client-id.apps.googleusercontent.com",
+			},
+			expectedSubject:  "google-user-123",
+			expectedUsername: "user@example.com",
+			expectedEmail:    "user@example.com",
+		},
+		{
 			name: "audience mismatch",
 			validator: &OIDCValidator{
 				audience:          "my-client-id.apps.googleusercontent.com",

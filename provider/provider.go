@@ -339,6 +339,9 @@ func (v *OIDCValidator) userFromGoogleTokenInfoClaims(claims map[string]interfac
 
 	subject, _ := claims["sub"].(string)
 	if subject == "" {
+		subject, _ = claims["user_id"].(string)
+	}
+	if subject == "" {
 		return nil, fmt.Errorf("missing subject in token")
 	}
 
