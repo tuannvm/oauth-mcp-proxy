@@ -3,8 +3,11 @@ package provider
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -54,12 +57,16 @@ type HMACValidator struct {
 
 // OIDCValidator validates JWT tokens using OIDC/JWKS (Okta, Google, Azure)
 type OIDCValidator struct {
-	verifier        *oidc.IDTokenVerifier
-	provider        *oidc.Provider
-	audience        string
-	TokenValidators []func(claims jwt.MapClaims) error
-	logger          Logger
+	verifier          *oidc.IDTokenVerifier
+	provider          *oidc.Provider
+	audience          string
+	providerName      string
+	skipAudienceCheck bool
+	TokenValidators   []func(claims jwt.MapClaims) error
+	logger            Logger
 }
+
+var googleTokenInfoURL = "https://oauth2.googleapis.com/tokeninfo"
 
 // Initialize sets up the HMAC validator with JWT secret and audience
 func (v *HMACValidator) Initialize(cfg *Config) error {
@@ -173,6 +180,8 @@ func (v *OIDCValidator) Initialize(cfg *Config) error {
 		v.logger = &noOpLogger{}
 	}
 	v.audience = cfg.Audience
+	v.providerName = strings.ToLower(cfg.Provider)
+	v.skipAudienceCheck = cfg.SkipAudienceCheck
 
 	// Use standard library context with timeout
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -226,14 +235,22 @@ func (v *OIDCValidator) Initialize(cfg *Config) error {
 func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (*User, error) {
 	// Remove Bearer prefix if present
 	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+	tokenString = strings.TrimSpace(tokenString)
 
 	// Use incoming context with timeout for OIDC provider call
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
+	if v.providerName == "google" && !looksLikeJWT(tokenString) {
+		return v.validateGoogleOpaqueToken(ctx, tokenString)
+	}
+
 	// go-oidc handles RSA signature validation, JWKS fetching, and key rotation
 	idToken, err := v.verifier.Verify(ctx, tokenString)
 	if err != nil {
+		if v.providerName == "google" && isMalformedJWTError(err) {
+			return v.validateGoogleOpaqueToken(ctx, tokenString)
+		}
 		return nil, fmt.Errorf("token verification failed: %w", err)
 	}
 
@@ -275,6 +292,79 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (
 		Username: claims.PreferredUsername,
 		Email:    claims.Email,
 	}, nil
+}
+
+func (v *OIDCValidator) validateGoogleOpaqueToken(ctx context.Context, tokenString string) (*User, error) {
+	endpoint := fmt.Sprintf("%s?access_token=%s", googleTokenInfoURL, url.QueryEscape(tokenString))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create google tokeninfo request: %w", err)
+	}
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("google tokeninfo request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed reading google tokeninfo response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("google tokeninfo validation failed: status %d", resp.StatusCode)
+	}
+
+	var claims map[string]interface{}
+	if err := json.Unmarshal(body, &claims); err != nil {
+		return nil, fmt.Errorf("failed parsing google tokeninfo response: %w", err)
+	}
+
+	return v.userFromGoogleTokenInfoClaims(claims)
+}
+
+func (v *OIDCValidator) userFromGoogleTokenInfoClaims(claims map[string]interface{}) (*User, error) {
+	aud, _ := claims["aud"].(string)
+	if !v.skipAudienceCheck {
+		if aud == "" {
+			return nil, fmt.Errorf("missing audience claim")
+		}
+		if aud != v.audience {
+			return nil, fmt.Errorf("invalid audience: expected %s, got %s", v.audience, aud)
+		}
+	}
+
+	subject, _ := claims["sub"].(string)
+	if subject == "" {
+		return nil, fmt.Errorf("missing subject in token")
+	}
+
+	email, _ := claims["email"].(string)
+	username := email
+	if username == "" {
+		username = subject
+	}
+
+	return &User{
+		Subject:  subject,
+		Username: username,
+		Email:    email,
+	}, nil
+}
+
+func looksLikeJWT(token string) bool {
+	return strings.Count(token, ".") == 2
+}
+
+func isMalformedJWTError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "malformed jwt") || strings.Contains(msg, "compact JWS format must have three parts")
 }
 
 // validateAudience validates the audience claim matches the expected value for OIDC tokens

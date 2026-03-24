@@ -286,6 +286,10 @@ func TestServerWrapHandler(t *testing.T) {
 			t.Errorf("Expected WWW-Authenticate header with error, got: %s", authHeader)
 		}
 
+		if !strings.Contains(authHeader, "resource_metadata=") {
+			t.Errorf("Expected WWW-Authenticate header to include resource_metadata, got: %s", authHeader)
+		}
+
 		if !strings.Contains(w.Body.String(), "invalid_token") {
 			t.Errorf("Expected JSON error response, got: %s", w.Body.String())
 		}

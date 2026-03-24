@@ -610,27 +610,7 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("OAuth2: Token exchange successful")
 
-	// Build response
-	response := map[string]interface{}{
-		"access_token": token.AccessToken,
-		"token_type":   token.TokenType,
-		"expires_in":   int(time.Until(token.Expiry).Seconds()),
-	}
-
-	// Add optional fields
-	if token.RefreshToken != "" {
-		response["refresh_token"] = token.RefreshToken
-	}
-
-	// Add ID token if present
-	if idToken, ok := token.Extra("id_token").(string); ok {
-		response["id_token"] = idToken
-	}
-
-	// Add scope if present
-	if scope, ok := token.Extra("scope").(string); ok {
-		response["scope"] = scope
-	}
+	response := h.buildTokenResponse(token)
 
 	// Send response
 	w.Header().Set("Content-Type", "application/json")
@@ -641,6 +621,46 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		h.logger.Error("OAuth2: Failed to encode token response: %v", err)
 	}
+}
+
+// buildTokenResponse builds an RFC 6749-style token response with provider-specific behavior.
+func (h *OAuth2Handler) buildTokenResponse(token *oauth2.Token) map[string]interface{} {
+	accessToken := token.AccessToken
+
+	if h.config != nil && h.config.Provider == "google" {
+		if idToken, ok := token.Extra("id_token").(string); ok && idToken != "" {
+			if !looksLikeJWT(token.AccessToken) {
+				if h.logger != nil {
+					h.logger.Info("OAuth2: Google provider detected opaque access token, using id_token as access_token for downstream compatibility")
+				}
+				accessToken = idToken
+			}
+		}
+	}
+
+	response := map[string]interface{}{
+		"access_token": accessToken,
+		"token_type":   token.TokenType,
+		"expires_in":   int(time.Until(token.Expiry).Seconds()),
+	}
+
+	if token.RefreshToken != "" {
+		response["refresh_token"] = token.RefreshToken
+	}
+
+	if idToken, ok := token.Extra("id_token").(string); ok {
+		response["id_token"] = idToken
+	}
+
+	if scope, ok := token.Extra("scope").(string); ok {
+		response["scope"] = scope
+	}
+
+	return response
+}
+
+func looksLikeJWT(token string) bool {
+	return strings.Count(token, ".") == 2
 }
 
 // showSuccessPage displays a success page after OAuth completion

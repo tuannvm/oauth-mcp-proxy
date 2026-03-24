@@ -371,3 +371,117 @@ func TestOIDCValidator_InitializationValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestOIDCValidator_GoogleTokenInfoClaimsValidation(t *testing.T) {
+	tests := []struct {
+		name             string
+		validator        *OIDCValidator
+		claims           map[string]interface{}
+		expectErr        bool
+		errContains      string
+		expectedSubject  string
+		expectedUsername string
+		expectedEmail    string
+	}{
+		{
+			name: "valid claims with email",
+			validator: &OIDCValidator{
+				audience:          "my-client-id.apps.googleusercontent.com",
+				skipAudienceCheck: false,
+			},
+			claims: map[string]interface{}{
+				"aud":   "my-client-id.apps.googleusercontent.com",
+				"sub":   "user-123",
+				"email": "user@example.com",
+			},
+			expectedSubject:  "user-123",
+			expectedUsername: "user@example.com",
+			expectedEmail:    "user@example.com",
+		},
+		{
+			name: "valid claims without email",
+			validator: &OIDCValidator{
+				audience:          "my-client-id.apps.googleusercontent.com",
+				skipAudienceCheck: false,
+			},
+			claims: map[string]interface{}{
+				"aud": "my-client-id.apps.googleusercontent.com",
+				"sub": "user-456",
+			},
+			expectedSubject:  "user-456",
+			expectedUsername: "user-456",
+			expectedEmail:    "",
+		},
+		{
+			name: "audience mismatch",
+			validator: &OIDCValidator{
+				audience:          "my-client-id.apps.googleusercontent.com",
+				skipAudienceCheck: false,
+			},
+			claims: map[string]interface{}{
+				"aud": "another-client-id.apps.googleusercontent.com",
+				"sub": "user-123",
+			},
+			expectErr:   true,
+			errContains: "invalid audience",
+		},
+		{
+			name: "missing subject",
+			validator: &OIDCValidator{
+				audience:          "my-client-id.apps.googleusercontent.com",
+				skipAudienceCheck: false,
+			},
+			claims: map[string]interface{}{
+				"aud": "my-client-id.apps.googleusercontent.com",
+			},
+			expectErr:   true,
+			errContains: "missing subject",
+		},
+		{
+			name: "skip audience check",
+			validator: &OIDCValidator{
+				audience:          "my-client-id.apps.googleusercontent.com",
+				skipAudienceCheck: true,
+			},
+			claims: map[string]interface{}{
+				"aud": "different-audience",
+				"sub": "user-789",
+			},
+			expectedSubject:  "user-789",
+			expectedUsername: "user-789",
+			expectedEmail:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user, err := tt.validator.userFromGoogleTokenInfoClaims(tt.claims)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Fatalf("expected error containing %q, got %q", tt.errContains, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if user.Subject != tt.expectedSubject {
+				t.Fatalf("expected subject %q, got %q", tt.expectedSubject, user.Subject)
+			}
+
+			if user.Username != tt.expectedUsername {
+				t.Fatalf("expected username %q, got %q", tt.expectedUsername, user.Username)
+			}
+
+			if user.Email != tt.expectedEmail {
+				t.Fatalf("expected email %q, got %q", tt.expectedEmail, user.Email)
+			}
+		})
+	}
+}
