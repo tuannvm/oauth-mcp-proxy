@@ -280,11 +280,8 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (
 	}
 
 	// Run extra validation functions
-	for i, fn := range v.TokenValidators {
-		err := fn(rawClaims)
-		if err != nil {
-			return nil, fmt.Errorf("validation function %d failed with error: %w", i, err)
-		}
+	if err := v.runTokenValidators(rawClaims); err != nil {
+		return nil, err
 	}
 
 	return &User{
@@ -318,25 +315,19 @@ func (v *OIDCValidator) validateGoogleOpaqueToken(ctx context.Context, tokenStri
 		return nil, fmt.Errorf("google tokeninfo validation failed: status %d", resp.StatusCode)
 	}
 
-	var claims map[string]interface{}
+	var claims jwt.MapClaims
 	if err := json.Unmarshal(body, &claims); err != nil {
 		return nil, fmt.Errorf("failed parsing google tokeninfo response: %w", err)
+	}
+
+	if err := v.runTokenValidators(claims); err != nil {
+		return nil, err
 	}
 
 	return v.userFromGoogleTokenInfoClaims(claims)
 }
 
-func (v *OIDCValidator) userFromGoogleTokenInfoClaims(claims map[string]interface{}) (*User, error) {
-	aud, _ := claims["aud"].(string)
-	if !v.skipAudienceCheck {
-		if aud == "" {
-			return nil, fmt.Errorf("missing audience claim")
-		}
-		if aud != v.audience {
-			return nil, fmt.Errorf("invalid audience: expected %s, got %s", v.audience, aud)
-		}
-	}
-
+func (v *OIDCValidator) userFromGoogleTokenInfoClaims(claims jwt.MapClaims) (*User, error) {
 	subject, _ := claims["sub"].(string)
 	if subject == "" {
 		subject, _ = claims["user_id"].(string)
@@ -356,6 +347,15 @@ func (v *OIDCValidator) userFromGoogleTokenInfoClaims(claims map[string]interfac
 		Username: username,
 		Email:    email,
 	}, nil
+}
+
+func (v *OIDCValidator) runTokenValidators(claims jwt.MapClaims) error {
+	for i, fn := range v.TokenValidators {
+		if err := fn(claims); err != nil {
+			return fmt.Errorf("validation function %d failed with error: %w", i, err)
+		}
+	}
+	return nil
 }
 
 func looksLikeJWT(token string) bool {

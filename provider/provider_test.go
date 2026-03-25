@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -376,7 +378,7 @@ func TestOIDCValidator_GoogleTokenInfoClaimsValidation(t *testing.T) {
 	tests := []struct {
 		name             string
 		validator        *OIDCValidator
-		claims           map[string]interface{}
+		claims           jwt.MapClaims
 		expectErr        bool
 		errContains      string
 		expectedSubject  string
@@ -389,7 +391,7 @@ func TestOIDCValidator_GoogleTokenInfoClaimsValidation(t *testing.T) {
 				audience:          "my-client-id.apps.googleusercontent.com",
 				skipAudienceCheck: false,
 			},
-			claims: map[string]interface{}{
+			claims: jwt.MapClaims{
 				"aud":   "my-client-id.apps.googleusercontent.com",
 				"sub":   "user-123",
 				"email": "user@example.com",
@@ -404,7 +406,7 @@ func TestOIDCValidator_GoogleTokenInfoClaimsValidation(t *testing.T) {
 				audience:          "my-client-id.apps.googleusercontent.com",
 				skipAudienceCheck: false,
 			},
-			claims: map[string]interface{}{
+			claims: jwt.MapClaims{
 				"aud": "my-client-id.apps.googleusercontent.com",
 				"sub": "user-456",
 			},
@@ -418,7 +420,7 @@ func TestOIDCValidator_GoogleTokenInfoClaimsValidation(t *testing.T) {
 				audience:          "my-client-id.apps.googleusercontent.com",
 				skipAudienceCheck: false,
 			},
-			claims: map[string]interface{}{
+			claims: jwt.MapClaims{
 				"aud":       "my-client-id.apps.googleusercontent.com",
 				"user_id":   "google-user-123",
 				"email":     "user@example.com",
@@ -430,25 +432,12 @@ func TestOIDCValidator_GoogleTokenInfoClaimsValidation(t *testing.T) {
 			expectedEmail:    "user@example.com",
 		},
 		{
-			name: "audience mismatch",
-			validator: &OIDCValidator{
-				audience:          "my-client-id.apps.googleusercontent.com",
-				skipAudienceCheck: false,
-			},
-			claims: map[string]interface{}{
-				"aud": "another-client-id.apps.googleusercontent.com",
-				"sub": "user-123",
-			},
-			expectErr:   true,
-			errContains: "invalid audience",
-		},
-		{
 			name: "missing subject",
 			validator: &OIDCValidator{
 				audience:          "my-client-id.apps.googleusercontent.com",
 				skipAudienceCheck: false,
 			},
-			claims: map[string]interface{}{
+			claims: jwt.MapClaims{
 				"aud": "my-client-id.apps.googleusercontent.com",
 			},
 			expectErr:   true,
@@ -460,7 +449,7 @@ func TestOIDCValidator_GoogleTokenInfoClaimsValidation(t *testing.T) {
 				audience:          "my-client-id.apps.googleusercontent.com",
 				skipAudienceCheck: true,
 			},
-			claims: map[string]interface{}{
+			claims: jwt.MapClaims{
 				"aud": "different-audience",
 				"sub": "user-789",
 			},
@@ -501,4 +490,72 @@ func TestOIDCValidator_GoogleTokenInfoClaimsValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOIDCValidator_ValidateGoogleOpaqueTokenRunsTokenValidators(t *testing.T) {
+	originalURL := googleTokenInfoURL
+	t.Cleanup(func() {
+		googleTokenInfoURL = originalURL
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("access_token"); got != "opaque-token" {
+			t.Fatalf("expected access_token query parameter, got %q", got)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"aud":"my-client-id.apps.googleusercontent.com","user_id":"google-user-123","email":"user@example.com"}`))
+	}))
+	defer server.Close()
+
+	googleTokenInfoURL = server.URL
+
+	t.Run("validator success", func(t *testing.T) {
+		called := false
+		validator := &OIDCValidator{
+			TokenValidators: []func(claims jwt.MapClaims) error{
+				func(claims jwt.MapClaims) error {
+					called = true
+					if claims["aud"] != "my-client-id.apps.googleusercontent.com" {
+						t.Fatalf("unexpected audience claim: %v", claims["aud"])
+					}
+					return nil
+				},
+			},
+		}
+
+		user, err := validator.validateGoogleOpaqueToken(context.Background(), "opaque-token")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !called {
+			t.Fatal("expected token validators to be called")
+		}
+		if user.Subject != "google-user-123" {
+			t.Fatalf("expected subject %q, got %q", "google-user-123", user.Subject)
+		}
+	})
+
+	t.Run("validator failure", func(t *testing.T) {
+		validator := &OIDCValidator{
+			TokenValidators: []func(claims jwt.MapClaims) error{
+				func(claims jwt.MapClaims) error {
+					return validatorError("audience rejected")
+				},
+			},
+		}
+
+		_, err := validator.validateGoogleOpaqueToken(context.Background(), "opaque-token")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "validation function 0 failed with error: audience rejected") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+type validatorError string
+
+func (e validatorError) Error() string {
+	return string(e)
 }

@@ -267,15 +267,15 @@ func (s *Server) WrapHandler(next http.Handler) http.Handler {
 
 			metadataURL := s.GetProtectedResourceMetadataURL()
 			w.Header().Set("WWW-Authenticate", fmt.Sprintf(
-				`Bearer realm="OAuth", error="invalid_token", error_description="Missing or invalid access token", resource_metadata="%s"`,
+				`Bearer realm="OAuth", error="invalid_request", error_description="Bearer token required", resource_metadata="%s"`,
 				metadataURL,
 			))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 
 			if err := json.NewEncoder(w).Encode(oauthErrorResponse{
-				Error:            "invalid_token",
-				ErrorDescription: "Missing or invalid access token",
+				Error:            "invalid_request",
+				ErrorDescription: "Bearer token required",
 			}); err != nil {
 				s.logger.Error("Error encoding OAuth error response: %v", err)
 			}
