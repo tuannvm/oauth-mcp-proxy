@@ -241,14 +241,14 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if v.providerName == "google" && !looksLikeJWT(tokenString) {
+	if v.shouldUseGoogleOpaqueFallback(tokenString, nil) {
 		return v.validateGoogleOpaqueToken(ctx, tokenString)
 	}
 
 	// go-oidc handles RSA signature validation, JWKS fetching, and key rotation
 	idToken, err := v.verifier.Verify(ctx, tokenString)
 	if err != nil {
-		if v.providerName == "google" && isMalformedJWTError(err) {
+		if v.shouldUseGoogleOpaqueFallback(tokenString, err) {
 			return v.validateGoogleOpaqueToken(ctx, tokenString)
 		}
 		return nil, fmt.Errorf("token verification failed: %w", err)
@@ -356,6 +356,20 @@ func (v *OIDCValidator) runTokenValidators(claims jwt.MapClaims) error {
 		}
 	}
 	return nil
+}
+
+func (v *OIDCValidator) shouldUseGoogleOpaqueFallback(token string, err error) bool {
+	if v.providerName != "google" || !isGoogleOpaqueCandidate(token) {
+		return false
+	}
+	if err == nil {
+		return !looksLikeJWT(token)
+	}
+	return isMalformedJWTError(err)
+}
+
+func isGoogleOpaqueCandidate(token string) bool {
+	return strings.HasPrefix(token, "ya29.")
 }
 
 func looksLikeJWT(token string) bool {
