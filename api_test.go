@@ -90,6 +90,18 @@ func TestWithOAuth(t *testing.T) {
 			t.Fatal("MCP server creation failed")
 		}
 
+		req := httptest.NewRequest("GET", "/callback?code=test-code&state=test-state", nil)
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, req)
+
+		if w.Code != http.StatusFound {
+			t.Fatalf("Expected /callback compatibility redirect to return 302, got %d", w.Code)
+		}
+
+		if location := w.Header().Get("Location"); location != "/oauth/callback?code=test-code&state=test-state" {
+			t.Fatalf("Expected redirect to /oauth/callback preserving query params, got %q", location)
+		}
+
 		t.Logf("✅ WithOAuth() works in proxy mode")
 	})
 
@@ -282,7 +294,7 @@ func TestServerWrapHandler(t *testing.T) {
 		}
 
 		authHeader := w.Header().Get("WWW-Authenticate")
-		if !strings.Contains(authHeader, "invalid_request") {
+		if !strings.Contains(authHeader, "invalid_token") {
 			t.Errorf("Expected WWW-Authenticate header with error, got: %s", authHeader)
 		}
 
@@ -290,7 +302,7 @@ func TestServerWrapHandler(t *testing.T) {
 			t.Errorf("Expected WWW-Authenticate header to include resource_metadata, got: %s", authHeader)
 		}
 
-		if !strings.Contains(w.Body.String(), "invalid_request") {
+		if !strings.Contains(w.Body.String(), "invalid_token") {
 			t.Errorf("Expected JSON error response, got: %s", w.Body.String())
 		}
 	})

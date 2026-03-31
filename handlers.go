@@ -319,9 +319,11 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	if redirectURI == "" && h.config.FixedRedirectURI != "" {
+	fixedRedirectURI := h.configuredFixedRedirectURI()
+
+	if redirectURI == "" && fixedRedirectURI != "" {
 		// Fixed redirect mode: Use server's redirect URI to OAuth provider, proxy back to client
-		h.logger.Info("OAuth2: Fixed redirect mode - using server URI: %s (will proxy to client: %s)", h.config.FixedRedirectURI, clientRedirectURI)
+		h.logger.Info("OAuth2: Fixed redirect mode - using server URI: %s (will proxy to client: %s)", fixedRedirectURI, clientRedirectURI)
 
 		// Validate client redirect URI format and security
 		if clientRedirectURI == "" {
@@ -365,7 +367,7 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, fmt.Sprintf("Invalid redirect_uri for fixed redirect mode: %s", clientRedirectURI), http.StatusBadRequest)
 			return
 		}
-		redirectURI = strings.TrimSpace(h.config.FixedRedirectURI)
+		redirectURI = fixedRedirectURI
 		h.logger.Info("OAuth2: Validated client redirect URI for proxy: %s", clientRedirectURI)
 		// For fixed redirect mode, create signed state with client redirect URI
 		// Create state data with redirect URI
@@ -456,7 +458,7 @@ func (h *OAuth2Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If using fixed redirect URI, handle proxy callback
-	if h.config.FixedRedirectURI != "" {
+	if h.configuredFixedRedirectURI() != "" {
 		// Verify and decode signed state parameter
 		stateData, err := h.verifyState(state)
 		if err != nil {
@@ -553,8 +555,8 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 		// Set redirect URI for token exchange
 		redirectURI := clientRedirectURI
-		if h.config.FixedRedirectURI != "" && !h.isValidRedirectURI(clientRedirectURI) {
-			redirectURI = strings.TrimSpace(h.config.FixedRedirectURI)
+		if fixedRedirectURI := h.configuredFixedRedirectURI(); fixedRedirectURI != "" && !h.isValidRedirectURI(clientRedirectURI) {
+			redirectURI = fixedRedirectURI
 			h.logger.Info("OAuth2: Token exchange using fixed redirect URI: %s", redirectURI)
 		}
 
@@ -694,6 +696,22 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// configuredFixedRedirectURI returns the effective fixed redirect URI.
+// Prefer the explicit FixedRedirectURI, but preserve the historical behavior
+// where a single RedirectURIs value also acted as fixed redirect mode.
+func (h *OAuth2Handler) configuredFixedRedirectURI() string {
+	if h == nil || h.config == nil {
+		return ""
+	}
+	if trimmed := strings.TrimSpace(h.config.FixedRedirectURI); trimmed != "" {
+		return trimmed
+	}
+	if redirects := strings.TrimSpace(h.config.RedirectURIs); redirects != "" && !strings.Contains(redirects, ",") {
+		return redirects
+	}
+	return ""
 }
 
 // pkceTransport adds PKCE code_verifier to token exchange requests

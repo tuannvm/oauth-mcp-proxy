@@ -5,6 +5,46 @@ import (
 	"testing"
 )
 
+func TestConfiguredFixedRedirectURICompatibility(t *testing.T) {
+	tests := []struct {
+		name     string
+		config    *OAuth2Config
+		expected string
+	}{
+		{
+			name: "explicit fixed redirect URI wins",
+			config: &OAuth2Config{
+				FixedRedirectURI: "https://server.example.com/oauth/callback",
+				RedirectURIs:     "https://old.example.com/oauth/callback",
+			},
+			expected: "https://server.example.com/oauth/callback",
+		},
+		{
+			name: "single legacy redirect URI acts as fixed redirect",
+			config: &OAuth2Config{
+				RedirectURIs: "https://server.example.com/oauth/callback",
+			},
+			expected: "https://server.example.com/oauth/callback",
+		},
+		{
+			name: "multiple redirect URIs do not imply fixed redirect",
+			config: &OAuth2Config{
+				RedirectURIs: "https://a.example.com/callback,https://b.example.com/callback",
+			},
+			expected: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			handler := &OAuth2Handler{config: tt.config}
+			if got := handler.configuredFixedRedirectURI(); got != tt.expected {
+				t.Fatalf("configuredFixedRedirectURI() = %q, want %q", got, tt.expected)
+			}
+		})
+	}
+}
+
 func TestFixedRedirectModeLocalhostOnly(t *testing.T) {
 	key := make([]byte, 32)
 	_, _ = rand.Read(key)

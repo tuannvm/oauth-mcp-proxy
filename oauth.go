@@ -94,6 +94,7 @@ func (s *Server) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/.well-known/oauth-protected-resource", s.handler.HandleProtectedResourceMetadata)
 	mux.HandleFunc("/.well-known/jwks.json", s.handler.HandleJWKS)
 	mux.HandleFunc("/oauth/authorize", s.handler.HandleAuthorize)
+	mux.HandleFunc("/callback", s.handler.HandleCallbackRedirect)
 	mux.HandleFunc("/oauth/callback", s.handler.HandleCallback)
 	mux.HandleFunc("/oauth/token", s.handler.HandleToken)
 	mux.HandleFunc("/oauth/register", s.handler.HandleRegister)
@@ -267,15 +268,17 @@ func (s *Server) WrapHandler(next http.Handler) http.Handler {
 
 			metadataURL := s.GetProtectedResourceMetadataURL()
 			w.Header().Set("WWW-Authenticate", fmt.Sprintf(
-				`Bearer realm="OAuth", error="invalid_request", error_description="Bearer token required", resource_metadata="%s"`,
+				// Preserve the historical Bearer challenge here for clients that
+				// key off invalid_token when bootstrapping OAuth discovery.
+				`Bearer realm="OAuth", error="invalid_token", error_description="Missing or invalid access token", resource_metadata="%s"`,
 				metadataURL,
 			))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 
 			if err := json.NewEncoder(w).Encode(oauthErrorResponse{
-				Error:            "invalid_request",
-				ErrorDescription: "Bearer token required",
+				Error:            "invalid_token",
+				ErrorDescription: "Missing or invalid access token",
 			}); err != nil {
 				s.logger.Error("Error encoding OAuth error response: %v", err)
 			}
