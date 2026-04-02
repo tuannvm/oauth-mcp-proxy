@@ -4,11 +4,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestRedirectURIValidation(t *testing.T) {
@@ -372,6 +375,8 @@ func TestAttackScenarios(t *testing.T) {
 			stateSigningKey: key,
 			RedirectURIs:    "https://mcp-server.com/oauth/callback",
 		},
+		seenNonces:  make(map[string]time.Time),
+		seenNonceMu: sync.RWMutex{},
 	}
 
 	t.Run("StateTampering", func(t *testing.T) {
@@ -428,8 +433,10 @@ func TestAttackScenarios(t *testing.T) {
 
 	t.Run("LeakedKeyForgedState", func(t *testing.T) {
 		maliciousState := map[string]string{
-			"state":    "attack",
-			"redirect": "https://evil.com/steal",
+			"state":     "attack",
+			"redirect":  "https://evil.com/steal",
+			"timestamp": fmt.Sprintf("%d", time.Now().Unix()),
+			"nonce":     generateSecureNonce(),
 		}
 
 		forgedState, err := handler.signState(maliciousState)
@@ -468,8 +475,10 @@ func TestAttackScenarios(t *testing.T) {
 		}
 
 		stateData := map[string]string{
-			"state":    "inspector-session",
-			"redirect": clientRedirectURI,
+			"state":     "inspector-session",
+			"redirect":  clientRedirectURI,
+			"timestamp": fmt.Sprintf("%d", time.Now().Unix()),
+			"nonce":     generateSecureNonce(),
 		}
 
 		signedState, err := handler.signState(stateData)

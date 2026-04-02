@@ -802,18 +802,26 @@ func (h *OAuth2Handler) verifyState(encodedState string) (map[string]string, err
 	}
 	delete(stateData, "sig") // Remove for verification
 
+	// Require timestamp and nonce for replay protection (CRITICAL)
+	timestampStr, hasTimestamp := stateData["timestamp"]
+	if !hasTimestamp {
+		return nil, fmt.Errorf("state missing required timestamp field (replay protection)")
+	}
+	if _, hasNonce := stateData["nonce"]; !hasNonce {
+		return nil, fmt.Errorf("state missing required nonce field (replay protection)")
+	}
+
 	// Validate timestamp to prevent replay attacks (reject states older than 10 minutes)
-	if timestampStr, ok := stateData["timestamp"]; ok {
-		timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
-		if err == nil {
-			age := time.Now().Unix() - timestamp
-			if age < 0 {
-				return nil, fmt.Errorf("state timestamp is in the future")
-			}
-			if age > 600 { // 10 minutes
-				return nil, fmt.Errorf("state is too old (possible replay attack)")
-			}
-		}
+	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("state has invalid timestamp format")
+	}
+	age := time.Now().Unix() - timestamp
+	if age < 0 {
+		return nil, fmt.Errorf("state timestamp is in the future")
+	}
+	if age > 600 { // 10 minutes
+		return nil, fmt.Errorf("state is too old (possible replay attack)")
 	}
 
 	// Recalculate signature using same deterministic approach
