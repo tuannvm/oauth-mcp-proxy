@@ -167,6 +167,9 @@ func (h *OAuth2Handler) HandleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+		// Limit request body size to prevent DoS (max 256KB for registration)
+		r.Body = http.MaxBytesReader(w, r.Body, 1<<18) // 256 KB
+		defer r.Body.Close()
 	// Parse the registration request
 	var regRequest map[string]interface{}
 	if err := json.NewDecoder(r.Body).Decode(&regRequest); err != nil {

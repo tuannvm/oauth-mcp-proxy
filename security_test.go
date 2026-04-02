@@ -245,10 +245,11 @@ func TestSecurityHeaders(t *testing.T) {
 	handler.addSecurityHeaders(recorder)
 
 	expectedHeaders := map[string]string{
-		"X-Content-Type-Options": "nosniff",
-		"X-Frame-Options":        "DENY",
-		"Cache-Control":          "no-store, no-cache, max-age=0",
-		"Pragma":                 "no-cache",
+		"X-Content-Type-Options":  "nosniff",
+		"X-Frame-Options":         "DENY",
+		"Cache-Control":           "no-store, no-cache, max-age=0",
+		"Pragma":                  "no-cache",
+		"Content-Security-Policy": "default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none'; font-src 'none'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self';",
 	}
 
 	for header, expectedValue := range expectedHeaders {
