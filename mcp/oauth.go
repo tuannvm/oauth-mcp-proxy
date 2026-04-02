@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/auth"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -57,17 +58,29 @@ func WithOAuth(mux *http.ServeMux, cfg *oauth.Config, mcpServer *mcp.Server) (*o
 
 	oauthServer.RegisterHandlers(mux)
 
+	// Create MCP handler
+	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return mcpServer
+	}, nil)
+
 	// Create a token verifier that uses our OAuth server
 	verifier := auth.TokenVerifier(func(ctx context.Context, token string, req *http.Request) (*auth.TokenInfo, error) {
 		user, err := oauthServer.ValidateTokenCached(ctx, token)
 		if err != nil {
-			return nil, fmt.Errorf("invalid token: %w", err)
+			// Return auth.ErrInvalidToken directly for proper 401 response
+			return nil, auth.ErrInvalidToken
 		}
 
 		// Build TokenInfo for go-sdk session management
+		// If token has no expiry, set a reasonable default (1 hour from now)
+		expiration := user.Expiry
+		if expiration.IsZero() {
+			expiration = time.Now().Add(time.Hour)
+		}
+
 		tokenInfo := &auth.TokenInfo{
 			UserID:     user.Subject, // For session hijacking prevention
-			Expiration: user.Expiry,
+			Expiration: expiration,
 		}
 
 		// Also store in oauth-mcp-proxy context for backward compatibility
@@ -83,13 +96,16 @@ func WithOAuth(mux *http.ServeMux, cfg *oauth.Config, mcpServer *mcp.Server) (*o
 		ResourceMetadataURL: oauthServer.GetAuthorizationServerMetadataURL(),
 	})
 
-	// Create MCP handler
-	mcpHandler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
-		return mcpServer
-	}, nil)
-
-	// Wrap with auth middleware
-	wrappedHandler := authMiddleware(mcpHandler)
+	// Wrap handler with CORS preflight support then auth
+	wrappedHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Pass through OPTIONS requests (CORS pre-flight)
+		if r.Method == http.MethodOptions {
+			mcpHandler.ServeHTTP(w, r)
+			return
+		}
+		// Apply auth middleware for all other methods
+		authMiddleware(mcpHandler).ServeHTTP(w, r)
+	})
 
 	return oauthServer, wrappedHandler, nil
 }
