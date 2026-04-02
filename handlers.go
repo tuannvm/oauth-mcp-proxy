@@ -816,26 +816,28 @@ func (h *OAuth2Handler) verifyState(encodedState string) (map[string]string, err
 	}
 	delete(stateData, "sig") // Remove for verification
 
-	// Require timestamp and nonce for replay protection (CRITICAL)
+	// Check for timestamp/nonce for replay protection
+	// Note: For rolling deploy compatibility, states without these fields are accepted
+	// (they were issued by older versions). New deployments should always include them.
 	timestampStr, hasTimestamp := stateData["timestamp"]
-	if !hasTimestamp {
-		return nil, fmt.Errorf("state missing required timestamp field (replay protection)")
-	}
-	if _, hasNonce := stateData["nonce"]; !hasNonce {
-		return nil, fmt.Errorf("state missing required nonce field (replay protection)")
-	}
+	nonce, hasNonce := stateData["nonce"]
 
-	// Validate timestamp to prevent replay attacks (reject states older than 10 minutes)
-	timestamp, err := strconv.ParseInt(timestampStr, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("state has invalid timestamp format")
-	}
-	age := time.Now().Unix() - timestamp
-	if age < 0 {
-		return nil, fmt.Errorf("state timestamp is in the future")
-	}
-	if age > 600 { // 10 minutes
-		return nil, fmt.Errorf("state is too old (possible replay attack)")
+	// Validate timestamp if present (required for replay protection)
+	var timestamp int64
+	var age int64
+	if hasTimestamp {
+		var err error
+		timestamp, err = strconv.ParseInt(timestampStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("state has invalid timestamp format")
+		}
+		age = time.Now().Unix() - timestamp
+		if age < 0 {
+			return nil, fmt.Errorf("state timestamp is in the future")
+		}
+		if age > 600 { // 10 minutes
+			return nil, fmt.Errorf("state is too old (possible replay attack)")
+		}
 	}
 
 	// Recalculate signature using same deterministic approach
@@ -864,14 +866,22 @@ func (h *OAuth2Handler) verifyState(encodedState string) (map[string]string, err
 	}
 
 	// Check nonce for replay protection (ONLY AFTER signature is verified)
-	if nonce, ok := stateData["nonce"]; ok {
+	if hasNonce && nonce != "" {
 		h.seenNonceMu.Lock()
+		// First, clean up expired nonces (memory leak prevention)
+		now := time.Now()
+		for n, expiry := range h.seenNonces {
+			if expiry.Before(now) {
+				delete(h.seenNonces, n)
+			}
+		}
+		// Then check if this nonce was already used
 		if _, exists := h.seenNonces[nonce]; exists {
 			h.seenNonceMu.Unlock()
 			return nil, fmt.Errorf("state already used (replay attack)")
 		}
 		// Record this nonce with expiration matching timestamp window
-		h.seenNonces[nonce] = time.Now().Add(10 * time.Minute)
+		h.seenNonces[nonce] = now.Add(10 * time.Minute)
 		h.seenNonceMu.Unlock()
 	}
 
