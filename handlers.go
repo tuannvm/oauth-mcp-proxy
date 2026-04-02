@@ -987,11 +987,12 @@ func (h *OAuth2Handler) addSecurityHeaders(w http.ResponseWriter) {
 }
 
 // generateSecureNonce generates a cryptographically secure random nonce
+// Panics if crypto/rand fails (extremely rare and indicates system-level failure)
 func generateSecureNonce() string {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
-		// Fallback to timestamp-based nonce if crypto rand fails
-		return fmt.Sprintf("%d-%d", time.Now().UnixNano(), time.Now().Unix())
+		// Panic on crypto failure - timestamp fallback weakens replay protection
+		panic(fmt.Sprintf("failed to generate secure nonce: %v", err))
 	}
 	return hex.EncodeToString(b)
 }

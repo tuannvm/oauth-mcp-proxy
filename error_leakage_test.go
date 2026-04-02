@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tuannvm/oauth-mcp-proxy/provider"
 )
@@ -89,7 +90,8 @@ func TestGenericErrorMessagesForSecurity(t *testing.T) {
 				FixedRedirectURI: "https://server.com/callback",
 				stateSigningKey:  []byte("test-key-32-bytes-long!"),
 			},
-			logger: &defaultLogger{},
+			logger:     &defaultLogger{},
+			seenNonces: make(map[string]time.Time),
 		}
 
 		// Use a tampered state

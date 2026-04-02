@@ -144,11 +144,8 @@ func CreateHTTPContextFunc() func(context.Context, *http.Request) context.Contex
 			ctx = WithOAuthToken(ctx, token)
 			log.Printf("OAuth: Token extracted from request (length: %d)", len(token))
 		} else if authHeader != "" {
-			preview := authHeader
-			if len(authHeader) > 30 {
-				preview = authHeader[:30] + "..."
-			}
-			log.Printf("OAuth: Invalid Authorization header format: %s", preview)
+			// Log only length, not content (may contain partial tokens)
+			log.Printf("OAuth: Invalid Authorization header format (length: %d, expected 'Bearer <token>')", len(authHeader))
 		}
 		return ctx
 	}

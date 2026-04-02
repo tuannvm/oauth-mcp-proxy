@@ -6,7 +6,7 @@ import (
 )
 
 // RateLimiter provides simple token-based rate limiting to prevent abuse.
-// Uses a sliding window algorithm to track request counts per key.
+// Uses a fixed-window algorithm to track request counts per key.
 type RateLimiter struct {
 	mu       sync.RWMutex
 	requests map[string]*rateLimiterEntry
@@ -23,7 +23,14 @@ type rateLimiterEntry struct {
 // NewRateLimiter creates a new rate limiter.
 // window: the time window for rate limiting (e.g., 1 minute)
 // maxReqs: maximum number of requests allowed per window
+// Panics if window <= 0 or maxReqs <= 0 (invalid configuration)
 func NewRateLimiter(window time.Duration, maxReqs int) *RateLimiter {
+	if window <= 0 {
+		panic("NewRateLimiter: window must be positive")
+	}
+	if maxReqs <= 0 {
+		panic("NewRateLimiter: maxReqs must be positive")
+	}
 	return &RateLimiter{
 		requests: make(map[string]*rateLimiterEntry),
 		window:   window,
@@ -92,8 +99,15 @@ func (rl *RateLimiter) cleanupExpiredEntries() {
 
 // StartCleanup starts a background goroutine that periodically cleans up expired entries.
 // Returns a function that stops the cleanup when called.
+// If interval <= 0, returns a no-op stop function without starting a goroutine.
 func (rl *RateLimiter) StartCleanup(interval time.Duration) func() {
+	if interval <= 0 {
+		return func() {}
+	}
+
 	stopCh := make(chan struct{})
+	stopOnce := &sync.Once{}
+
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
@@ -106,8 +120,11 @@ func (rl *RateLimiter) StartCleanup(interval time.Duration) func() {
 			}
 		}
 	}()
+
 	return func() {
-		close(stopCh)
+		stopOnce.Do(func() {
+			close(stopCh)
+		})
 	}
 }
 
