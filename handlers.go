@@ -297,6 +297,13 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Validate OAuth parameters to prevent DoS (cap field lengths)
+	if err := h.validateOAuthParams(r); err != nil {
+		h.logger.Error("OAuth2: Invalid OAuth parameters: %v", err)
+		http.Error(w, "Invalid request parameters", http.StatusBadRequest)
+		return
+	}
+
 	// Extract query parameters
 	query := r.URL.Query()
 
@@ -549,6 +556,13 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		h.logger.Error("OAuth2: Failed to parse form: %v", err)
 		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Validate OAuth parameters to prevent DoS (cap field lengths)
+	if err := h.validateOAuthParams(r); err != nil {
+		h.logger.Error("OAuth2: Invalid OAuth parameters: %v", err)
+		http.Error(w, "Invalid request parameters", http.StatusBadRequest)
 		return
 	}
 
