@@ -47,7 +47,6 @@ func ValidateIssuerURL(issuer string) error {
 		return fmt.Errorf("issuer URL hostname contains invalid patterns")
 	}
 
-
 	return nil
 }
 

@@ -15,10 +15,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"strings"
-	"time"
 	"strconv"
+	"strings"
 	"sync"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/oauth2"
@@ -132,7 +132,7 @@ func NewOAuth2Handler(cfg *OAuth2Config, logger Logger) *OAuth2Handler {
 	}
 
 	return &OAuth2Handler{
-		seenNonces: make(map[string]time.Time),
+		seenNonces:   make(map[string]time.Time),
 		config:       cfg,
 		oauth2Config: oauth2Config,
 		logger:       logger,
@@ -543,7 +543,7 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	h.logger.Info("OAuth2: Token exchange request from %s", r.RemoteAddr)
 	// Limit request body size to prevent DoS (max 1MB for token exchange)
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 
 	// Parse form data
 	if err := r.ParseForm(); err != nil {

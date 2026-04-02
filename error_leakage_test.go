@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -122,13 +123,16 @@ func TestTokenValidationErrorMessages(t *testing.T) {
 	// Test that token validation errors don't leak token details
 	t.Run("TokenErrorsDoNotLeakTokenContent", func(t *testing.T) {
 		validator := &provider.HMACValidator{}
-		validator.Initialize(&provider.Config{
+		err := validator.Initialize(&provider.Config{
 			Audience:  "test-audience",
 			JWTSecret: []byte("test-secret-key-32-bytes-long"),
 		})
+		if err != nil {
+			t.Fatalf("Failed to initialize validator: %v", err)
+		}
 
 		// Try to validate an invalid token
-		_, err := validator.ValidateToken(nil, "invalid.token.here")
+		_, err = validator.ValidateToken(context.TODO(), "invalid.token.here")
 
 		if err == nil {
 			t.Error("Expected error for invalid token")
