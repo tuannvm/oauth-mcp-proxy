@@ -92,8 +92,9 @@ func WithOAuth(mux *http.ServeMux, cfg *oauth.Config, mcpServer *mcp.Server) (*o
 	})
 
 	// Create auth middleware using go-sdk's RequireBearerToken
+	// Use protected resource metadata URL (RFC 9728) not authorization server metadata
 	authMiddleware := auth.RequireBearerToken(verifier, &auth.RequireBearerTokenOptions{
-		ResourceMetadataURL: oauthServer.GetAuthorizationServerMetadataURL(),
+		ResourceMetadataURL: oauthServer.GetProtectedResourceMetadataURL(),
 	})
 
 	// Wrap handler with CORS preflight support then auth

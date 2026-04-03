@@ -20,9 +20,9 @@ examples/
 | SDK | Example | Tools | Provider | Features |
 |-----|---------|-------|----------|----------|
 | **mark3labs** | simple | 1 (greet) | Okta | Basic OAuth, env vars |
-| **mark3labs** | advanced | 3 (greet, echo, time) | Okta | ConfigBuilder, env vars, logging |
+| **mark3labs** | advanced | 1 (get_user_info) | Okta | ConfigBuilder, env vars, logging, status endpoint |
 | **official** | simple | 1 (greet) | Okta | Basic OAuth, env vars |
-| **official** | advanced | 3 (greet, whoami, server_time) | Okta | ConfigBuilder, env vars, logging |
+| **official** | advanced | 1 (get_user_info) | Okta | ConfigBuilder, env vars, logging, status endpoint |
 
 ---
 
