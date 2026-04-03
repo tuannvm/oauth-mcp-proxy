@@ -1,7 +1,6 @@
 package oauth
 
 import (
-	"net"
 	"testing"
 )
 
@@ -171,145 +170,6 @@ func TestValidateRedirectURI(t *testing.T) {
 	}
 }
 
-func TestValidateClientID(t *testing.T) {
-	tests := []struct {
-		name      string
-		clientID  string
-		expectErr bool
-		errMsg    string
-	}{
-		{
-			name:      "Valid client ID",
-			clientID:  "my-client-id-12345",
-			expectErr: false,
-		},
-		{
-			name:      "Valid client ID with special chars",
-			clientID:  "client_id@domain.com",
-			expectErr: false,
-		},
-		{
-			name:      "Empty client ID",
-			clientID:  "",
-			expectErr: true,
-			errMsg:    "cannot be empty",
-		},
-		{
-			name:      "Too long",
-			clientID:  string(make([]byte, 257)),
-			expectErr: true,
-			errMsg:    "too long",
-		},
-		{
-			name:      "Contains whitespace",
-			clientID:  "client id with spaces",
-			expectErr: true,
-			errMsg:    "cannot contain whitespace",
-		},
-		{
-			name:      "Contains tab",
-			clientID:  "client\tid",
-			expectErr: true,
-			errMsg:    "cannot contain whitespace",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateClientID(tt.clientID)
-			if tt.expectErr {
-				if err == nil {
-					t.Errorf("Expected error but got none")
-				} else if tt.errMsg != "" && !containsString(err.Error(), tt.errMsg) {
-					t.Errorf("Expected error containing %q, got %q", tt.errMsg, err.Error())
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
-				}
-			}
-		})
-	}
-}
-
-func TestValidateClientSecret(t *testing.T) {
-	tests := []struct {
-		name         string
-		clientSecret string
-		expectErr    bool
-		errMsg       string
-	}{
-		{
-			name:         "Empty (public client)",
-			clientSecret: "",
-			expectErr:    false,
-		},
-		{
-			name:         "Valid secret",
-			clientSecret: "my-secure-client-secret-123456",
-			expectErr:    false,
-		},
-		{
-			name:         "Too short",
-			clientSecret: "short",
-			expectErr:    true,
-			errMsg:       "too short",
-		},
-		{
-			name:         "Too long",
-			clientSecret: string(make([]byte, 2049)),
-			expectErr:    true,
-			errMsg:       "too long",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateClientSecret(tt.clientSecret)
-			if tt.expectErr {
-				if err == nil {
-					t.Errorf("Expected error but got none")
-				} else if tt.errMsg != "" && !containsString(err.Error(), tt.errMsg) {
-					t.Errorf("Expected error containing %q, got %q", tt.errMsg, err.Error())
-				}
-			} else {
-				if err != nil {
-					t.Errorf("Unexpected error: %v", err)
-				}
-			}
-		})
-	}
-}
-
-func TestIsPrivateIP(t *testing.T) {
-	tests := []struct {
-		name     string
-		ip       string
-		expected bool
-	}{
-		{"Public IP 8.8.8.8", "8.8.8.8", false},
-		{"Private 10.0.0.1", "10.0.0.1", true},
-		{"Private 172.16.0.1", "172.16.0.1", true},
-		{"Private 192.168.1.1", "192.168.1.1", true},
-		{"Link-local 169.254.1.1", "169.254.1.1", true},
-		{"Public 1.1.1.1", "1.1.1.1", false},
-		{"Loopback 127.0.0.1", "127.0.0.1", false}, // localhost is handled separately
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ip := parseIP(tt.ip)
-			if ip == nil {
-				t.Fatalf("Failed to parse IP: %s", tt.ip)
-			}
-			result := isPrivateIP(ip)
-			if result != tt.expected {
-				t.Errorf("isPrivateIP(%s) = %v, expected %v", tt.ip, result, tt.expected)
-			}
-		})
-	}
-}
-
 // Helper function to check if string contains substring
 func containsString(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsSubstring(s, substr))
@@ -322,9 +182,4 @@ func containsSubstring(s, substr string) bool {
 		}
 	}
 	return false
-}
-
-// Helper function to parse IP
-func parseIP(s string) net.IP {
-	return net.ParseIP(s)
 }

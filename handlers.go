@@ -131,12 +131,30 @@ func NewOAuth2Handler(cfg *OAuth2Config, logger Logger) *OAuth2Handler {
 		}
 	}
 
-	return &OAuth2Handler{
+	h := &OAuth2Handler{
 		seenNonces:   make(map[string]time.Time),
 		config:       cfg,
 		oauth2Config: oauth2Config,
 		logger:       logger,
 	}
+
+	// Background goroutine to clean up expired nonces (avoids O(n) per-request cleanup)
+	go func() {
+		ticker := time.NewTicker(2 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			h.seenNonceMu.Lock()
+			now := time.Now()
+			for n, expiry := range h.seenNonces {
+				if expiry.Before(now) {
+					delete(h.seenNonces, n)
+				}
+			}
+			h.seenNonceMu.Unlock()
+		}
+	}()
+
+	return h
 }
 
 // discoverOIDCEndpoints uses OIDC discovery to get the correct authorization and token endpoints
@@ -875,20 +893,11 @@ func (h *OAuth2Handler) verifyState(encodedState string) (map[string]string, err
 	// Check nonce for replay protection (ONLY AFTER signature is verified)
 	if hasNonce && nonce != "" {
 		h.seenNonceMu.Lock()
-		// First, clean up expired nonces (memory leak prevention)
-		now := time.Now()
-		for n, expiry := range h.seenNonces {
-			if expiry.Before(now) {
-				delete(h.seenNonces, n)
-			}
-		}
-		// Then check if this nonce was already used
 		if _, exists := h.seenNonces[nonce]; exists {
 			h.seenNonceMu.Unlock()
 			return nil, fmt.Errorf("state already used (replay attack)")
 		}
-		// Record this nonce with expiration matching timestamp window
-		h.seenNonces[nonce] = now.Add(10 * time.Minute)
+		h.seenNonces[nonce] = time.Now().Add(10 * time.Minute)
 		h.seenNonceMu.Unlock()
 	}
 

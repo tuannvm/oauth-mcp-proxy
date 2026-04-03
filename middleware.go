@@ -49,9 +49,7 @@ func (s *Server) Middleware() func(server.ToolHandlerFunc) server.ToolHandlerFun
 			}
 
 			// Log token hash for debugging (prevents sensitive data exposure)
-			tokenHashFull := fmt.Sprintf("%x", sha256.Sum256([]byte(tokenString)))
-			tokenHashPreview := tokenHashFull[:16] + "..."
-			s.logger.Info("Validating token for tool %s (hash: %s)", req.Params.Name, tokenHashPreview)
+			s.logger.Info("Validating token for tool %s (hash: %s...)", req.Params.Name, tokenHash[:16])
 
 			// Validate token using configured provider (with request context for timeout/cancellation)
 			user, err := s.validator.ValidateToken(ctx, tokenString)
