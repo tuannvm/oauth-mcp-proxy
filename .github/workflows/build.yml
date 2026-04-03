@@ -92,7 +92,7 @@ jobs:
           govulncheck ./...
 
       - name: Run dependency scan
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@0.33.1
         with:
           scan-type: "fs"
           scan-ref: "."

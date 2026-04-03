@@ -30,7 +30,7 @@ type Config struct {
     AllowedClientRedirectDomains string // Comma-separated domain suffixes allowed for client redirects
 
     // Optional - Token Validation
-    Scopes              string // OAuth scopes (space-separated)
+    Scopes              []string // OAuth scopes
     SkipAudienceCheck  bool   // Skip audience validation (not recommended)
 
     // Optional - Logging
