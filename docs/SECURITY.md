@@ -59,9 +59,9 @@ Issuer: "https://192.168.1.1/issuer"            // IP addresses not allowed
 
 **Migration**: Use server logs for detailed debugging. Client-facing errors are intentionally generic for security.
 
-### Backwards Compatible Changes
+### Backward-Compatible Changes
 
-The following security improvements are **fully backwards compatible**:
+The following security improvements are **fully backward-compatible**:
 
 - **Token cache expiry fix** - Cache now respects JWT expiration times
 - **State replay protection** - Legacy states without timestamp/nonce still accepted for rolling deploys

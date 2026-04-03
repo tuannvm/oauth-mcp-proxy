@@ -101,7 +101,7 @@ func (c *Config) Validate() error {
 
 		// Validate redirect URIs for security
 		if c.RedirectURIs != "" {
-			// Split by comma and validate each redirect URI
+			validCount := 0
 			for _, uri := range strings.Split(c.RedirectURIs, ",") {
 				uri = strings.TrimSpace(uri)
 				if uri == "" {
@@ -110,6 +110,10 @@ func (c *Config) Validate() error {
 				if err := ValidateRedirectURI(uri); err != nil {
 					return fmt.Errorf("invalid redirect URI '%s': %w", uri, err)
 				}
+				validCount++
+			}
+			if validCount == 0 && c.FixedRedirectURI == "" {
+				return fmt.Errorf("proxy mode requires at least one valid redirect URI")
 			}
 		}
 
