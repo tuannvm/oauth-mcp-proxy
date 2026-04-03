@@ -49,7 +49,45 @@ Issuer: "https://192.168.1.1/issuer"            // IP addresses not allowed
 
 **Migration**: No code changes needed. Ensure your system has a working CSPRNG.
 
-### 4. Error Message Simplification
+### 4. CreateRequestAuthHook Now Rejects Requests
+
+**What changed**: `CreateRequestAuthHook()` now returns an error for all requests instead of silently allowing them through.
+
+**Why**: The previous implementation returned `nil` (allow-all), which created a security bypass if integrators relied on this hook for authentication. The hook's signature cannot propagate context changes, making it fundamentally unable to perform real auth.
+
+**Impact**: Any code using `CreateRequestAuthHook()` will now reject all requests with an error.
+
+**Migration**: Switch to `WithOAuth()` tool-level middleware, which properly handles authentication and context propagation:
+```go
+// ❌ Old (deprecated, now fails all requests)
+hook := oauth.CreateRequestAuthHook(validator)
+
+// ✅ New
+oauthServer, oauthOption, _ := mark3labs.WithOAuth(mux, &oauth.Config{...})
+mcpServer := server.NewMCPServer("name", "1.0.0", oauthOption)
+```
+
+### 5. Redirect URI Validation in Config
+
+**What changed**: `Config.Validate()` now validates redirect URIs and fixed redirect URIs at startup. HTTPS is required for non-localhost URIs, fragments are rejected, and whitespace-only URI lists are caught.
+
+**Why**: Prevents open redirect vulnerabilities and ensures OAuth 2.0 spec compliance.
+
+**Impact**: Existing configs with HTTP redirect URIs for non-localhost hosts, or URIs containing fragments, will fail validation at startup.
+
+**Migration**:
+```go
+// ✅ Valid
+RedirectURIs: "https://app.example.com/callback"
+RedirectURIs: "http://localhost:3000/callback"
+
+// ❌ Invalid - will fail validation
+RedirectURIs: "http://app.example.com/callback"      // Must use HTTPS
+RedirectURIs: "https://app.example.com/cb#fragment"   // No fragments allowed
+RedirectURIs: " , , "                                  // No valid URIs
+```
+
+### 6. Error Message Simplification
 
 **What changed**: Security-sensitive error paths now return generic error messages to prevent information leakage.
 
