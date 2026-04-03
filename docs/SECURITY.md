@@ -375,16 +375,44 @@ oauth.WithOAuth(mux, &oauth.Config{
 
 ## 🚨 Rate Limiting
 
-### Protect OAuth Endpoints
+### Built-in Rate Limiter
+
+oauth-mcp-proxy includes a built-in rate limiter:
+
+```go
+import "github.com/tuannvm/oauth-mcp-proxy"
+
+limiter := oauth.NewRateLimiter(time.Minute, 100) // 100 req/min
+if !limiter.Allow("client-key") {
+    http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+    return
+}
+```
+
+**Features:**
+- Fixed-window rate limiting
+- Automatic cleanup of expired entries
+- Thread-safe (uses sync.RWMutex)
+- Background cleanup goroutine support
+
+```go
+// Start background cleanup (prevents memory leaks)
+stopCleanup := limiter.StartCleanup(5 * time.Minute)
+defer stopCleanup()
+```
+
+### Additional Protection
+
+For OAuth endpoints, consider additional rate limiting:
 
 ```go
 import "golang.org/x/time/rate"
 
-limiter := rate.NewLimiter(10, 20)  // 10 req/s, burst 20
+globalLimiter := rate.NewLimiter(10, 20)  // 10 req/s, burst 20
 
 func rateLimitMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        if !limiter.Allow() {
+        if !globalLimiter.Allow() {
             http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
             return
         }
@@ -405,9 +433,77 @@ OAuth handler automatically adds security headers:
 ```
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
-X-XSS-Protection: 1; mode=block
-Cache-Control: no-store (for sensitive endpoints)
+Cache-Control: no-store, no-cache, max-age=0
+Pragma: no-cache
+Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none'; font-src 'none'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self';
 ```
+
+---
+
+## 🛡️ Built-in Security Features
+
+oauth-mcp-proxy includes multiple security defenses:
+
+### State Replay Protection
+
+OAuth state parameters are protected against replay attacks:
+
+- **Timestamp validation** - States expire after 10 minutes
+- **Nonce uniqueness** - Each state uses a cryptographically random nonce
+- **Replay detection** - Nonce tracked and rejected if reused
+- **Automatic cleanup** - Expired nonces removed to prevent memory leaks
+- **Rolling deploy compatible** - Accepts states from older versions during upgrades
+
+### Token Cache Security
+
+Token caching respects JWT expiration times:
+
+```go
+// Cache uses min(token.expiry, now + 5 minutes)
+// This prevents cached tokens from being used past actual expiration
+```
+
+### Input Validation
+
+Request parameters are validated to prevent abuse:
+
+- **code parameter** - Max 512 characters
+- **state parameter** - Max 256 characters  
+- **code_challenge parameter** - Max 256 characters
+- **Request body size** - Limited to prevent DoS (1MB for /oauth/token, 256KB for /oauth/register)
+
+### Issuer URL Validation
+
+OIDC provider issuer URLs are validated:
+
+- **HTTPS required** for non-localhost URLs (prevents MITM attacks)
+- **Valid URL format** - Must parse correctly
+- **Not empty** - Issuer must be specified
+- **No raw IP addresses** - Hostnames only (prevents misconfiguration)
+
+### Constant-Time Cryptography
+
+HMAC signatures verified using constant-time comparison:
+
+```go
+// Prevents timing attacks on signature validation
+hmac.Equal([]byte(receivedSig), []byte(expectedSig))
+```
+
+### Secure Random Number Generation
+
+Nonces generated using crypto/rand:
+
+- **Panics on failure** - No fallback to weak timestamp-based nonces
+- **Cryptographically secure** - Uses system CSPRNG
+
+### Session Management (Official SDK)
+
+The official SDK adapter populates the go-sdk auth context:
+
+- **auth.TokenInfo populated** - User ID and expiration set for session binding
+- **Session hijacking prevention** - Requests from different users rejected
+- **CORS support** - OPTIONS requests pass through for browser clients
 
 Add application-level headers:
 
@@ -429,15 +525,28 @@ http.ListenAndServeTLS(":443", "cert.pem", "key.pem", securityHeaders(mux))
 
 ### Pre-Production
 
+**Configuration:**
 - [ ] All secrets in environment variables (not code)
 - [ ] HTTPS enabled with valid certificates
 - [ ] Audience configured and validated
 - [ ] JWT secret 32+ bytes (HMAC) or provider-issued (OIDC)
+- [ ] Issuer URL validated (OIDC providers)
 - [ ] Redirect URIs properly configured
-- [ ] Token expiration set appropriately
+
+**Built-in Security (already enabled):**
+- [x] State replay protection (timestamp + nonce)
+- [x] Nonce cleanup (memory leak prevention)
+- [x] Token cache with JWT expiry awareness
+- [x] Input validation (parameter length limits)
+- [x] Request body size limits (DoS prevention)
+- [x] Constant-time HMAC comparison
+- [x] Secure nonce generation (crypto/rand)
+- [x] Security headers (CSP, X-Frame-Options, etc.)
+- [x] CORS support (OPTIONS pass-through)
+
+**Optional:**
 - [ ] Custom logger configured (no sensitive data logged)
-- [ ] Rate limiting on OAuth endpoints
-- [ ] Security headers configured
+- [ ] Additional rate limiting on OAuth endpoints
 
 ### Regular Maintenance
 
