@@ -603,7 +603,9 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 		// For PKCE, we need to manually add the code_verifier to the token exchange
 		// Since oauth2 library doesn't support PKCE directly, we'll use a custom approach
-		ctx := context.Background()
+		// Use request-scoped context with timeout to prevent DoS from slow IdP
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
 
 		// Create custom HTTP client for token exchange with PKCE
 		if codeVerifier != "" {
@@ -632,7 +634,9 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		ctx := context.Background()
+		// Use request-scoped context with timeout to prevent DoS from slow IdP
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
 		src := h.oauth2Config.TokenSource(ctx, &oauth2.Token{
 			RefreshToken: refreshToken,
 		})
@@ -972,6 +976,18 @@ func (h *OAuth2Handler) validateOAuthParams(r *http.Request) error {
 	}
 	if challenge := r.FormValue("code_challenge"); len(challenge) > 256 {
 		return fmt.Errorf("invalid code_challenge parameter length")
+	}
+	if redirectURI := r.FormValue("redirect_uri"); len(redirectURI) > 2048 {
+		return fmt.Errorf("invalid redirect_uri parameter length")
+	}
+	if codeVerifier := r.FormValue("code_verifier"); len(codeVerifier) > 256 {
+		return fmt.Errorf("invalid code_verifier parameter length")
+	}
+	if refreshToken := r.FormValue("refresh_token"); len(refreshToken) > 2048 {
+		return fmt.Errorf("invalid refresh_token parameter length")
+	}
+	if clientID := r.FormValue("client_id"); len(clientID) > 256 {
+		return fmt.Errorf("invalid client_id parameter length")
 	}
 	return nil
 }
