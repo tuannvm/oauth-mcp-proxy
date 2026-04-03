@@ -2,7 +2,10 @@ package oauth
 
 import (
 	"crypto/rand"
+	"fmt"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestStateSigningAndVerification(t *testing.T) {
@@ -14,6 +17,8 @@ func TestStateSigningAndVerification(t *testing.T) {
 		config: &OAuth2Config{
 			stateSigningKey: key,
 		},
+		seenNonces:  make(map[string]time.Time),
+		seenNonceMu: sync.RWMutex{},
 	}
 
 	tests := []struct {
@@ -50,6 +55,10 @@ func TestStateSigningAndVerification(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Add timestamp and nonce (required for replay protection)
+			tt.stateData["timestamp"] = fmt.Sprintf("%d", time.Now().Unix())
+			tt.stateData["nonce"] = generateSecureNonce()
+
 			// Sign state
 			signed, err := handler.signState(tt.stateData)
 			if err != nil {
@@ -87,12 +96,16 @@ func TestStateTamperingDetection(t *testing.T) {
 		config: &OAuth2Config{
 			stateSigningKey: key,
 		},
+		seenNonces:  make(map[string]time.Time),
+		seenNonceMu: sync.RWMutex{},
 	}
 
 	// Create and sign valid state
 	stateData := map[string]string{
-		"state":    "original",
-		"redirect": "https://good.com/callback",
+		"state":     "original",
+		"redirect":  "https://good.com/callback",
+		"timestamp": fmt.Sprintf("%d", time.Now().Unix()),
+		"nonce":     generateSecureNonce(),
 	}
 
 	signed, err := handler.signState(stateData)
@@ -114,6 +127,8 @@ func TestStateTamperingDetection(t *testing.T) {
 		config: &OAuth2Config{
 			stateSigningKey: differentKey,
 		},
+		seenNonces:  make(map[string]time.Time),
+		seenNonceMu: sync.RWMutex{},
 	}
 
 	// Try to verify with different key (should fail)

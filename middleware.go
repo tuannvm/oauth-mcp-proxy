@@ -49,9 +49,7 @@ func (s *Server) Middleware() func(server.ToolHandlerFunc) server.ToolHandlerFun
 			}
 
 			// Log token hash for debugging (prevents sensitive data exposure)
-			tokenHashFull := fmt.Sprintf("%x", sha256.Sum256([]byte(tokenString)))
-			tokenHashPreview := tokenHashFull[:16] + "..."
-			s.logger.Info("Validating token for tool %s (hash: %s)", req.Params.Name, tokenHashPreview)
+			s.logger.Info("Validating token for tool %s (hash: %s...)", req.Params.Name, tokenHash[:16])
 
 			// Validate token using configured provider (with request context for timeout/cancellation)
 			user, err := s.validator.ValidateToken(ctx, tokenString)
@@ -60,13 +58,26 @@ func (s *Server) Middleware() func(server.ToolHandlerFunc) server.ToolHandlerFun
 				return nil, fmt.Errorf("authentication failed: %w", err)
 			}
 
-			// Cache the validation result (expire in 5 minutes)
-			expiresAt := time.Now().Add(5 * time.Minute)
+			// Cache with respect to token expiry: use min(token_expiry, now+5min)
+			// This prevents cached tokens from being used past their actual expiration time
+			maxCacheTime := time.Now().Add(5 * time.Minute)
+			var expiresAt time.Time
+			if !user.Expiry.IsZero() {
+				// Token has expiry - use the earlier of token expiry or max cache time
+				if user.Expiry.Before(maxCacheTime) {
+					expiresAt = user.Expiry
+				} else {
+					expiresAt = maxCacheTime
+				}
+			} else {
+				// No expiry (backwards compatibility) - use max cache time
+				expiresAt = maxCacheTime
+			}
 			s.cache.setCachedToken(tokenHash, user, expiresAt)
 
 			// Add user to context for downstream handlers
 			ctx = context.WithValue(ctx, userContextKey, user)
-			s.logger.Info("Authenticated user %s for tool: %s (cached for 5 minutes)", user.Username, req.Params.Name)
+			s.logger.Info("Authenticated user %s for tool: %s (cached until %v)", user.Username, req.Params.Name, expiresAt.Format(time.RFC3339))
 
 			return next(ctx, req)
 		}
@@ -131,11 +142,8 @@ func CreateHTTPContextFunc() func(context.Context, *http.Request) context.Contex
 			ctx = WithOAuthToken(ctx, token)
 			log.Printf("OAuth: Token extracted from request (length: %d)", len(token))
 		} else if authHeader != "" {
-			preview := authHeader
-			if len(authHeader) > 30 {
-				preview = authHeader[:30] + "..."
-			}
-			log.Printf("OAuth: Invalid Authorization header format: %s", preview)
+			// Log only length, not content (may contain partial tokens)
+			log.Printf("OAuth: Invalid Authorization header format (length: %d, expected 'Bearer <token>')", len(authHeader))
 		}
 		return ctx
 	}
@@ -146,13 +154,15 @@ func CreateHTTPContextFunc() func(context.Context, *http.Request) context.Contex
 // Deprecated: This function cannot propagate context changes due to its signature limitation.
 // Use WithOAuth() instead, which properly handles context propagation via tool-level middleware.
 //
-// This function is a no-op that always returns nil. Authentication happens at the tool level
-// via Server.Middleware() which can properly propagate the authenticated user in context.
+// SECURITY: This function now returns an error to prevent silent bypass of authentication.
+// The original implementation returned nil (allow-all), which created a security risk if
+// integrators used this hook expecting protection. Use tool-level middleware instead.
 func CreateRequestAuthHook(validator provider.TokenValidator) func(context.Context, interface{}, interface{}) error {
 	return func(ctx context.Context, id interface{}, message interface{}) error {
 		// This hook cannot propagate context changes due to its signature limitation.
-		// Authentication is handled by tool-level middleware instead.
-		log.Printf("OAuth: Server-level auth hook called for request ID: %v (using tool-level middleware)", id)
-		return nil // Always succeed - actual auth is done at tool level
+		// To prevent silent security bypass, we fail explicitly.
+		// Integrators must use WithOAuth() tool-level middleware instead.
+		log.Printf("OAuth: Server-level auth hook called (DEPRECATED) - refusing request %v. Use WithOAuth() tool-level middleware instead.", id)
+		return fmt.Errorf("authentication failed: CreateRequestAuthHook is deprecated and insecure. Use WithOAuth() tool-level middleware instead")
 	}
 }

@@ -4,6 +4,113 @@ This guide outlines security best practices when using oauth-mcp-proxy in produc
 
 ---
 
+## Breaking Changes (Security Hardening v1.1.0)
+
+The following security improvements introduce breaking changes:
+
+### 1. Issuer URL Validation (CRITICAL)
+
+**What changed**: OIDC providers (Okta, Google, Azure) now enforce HTTPS validation for issuer URLs in `Config.Validate()`.
+
+**Why**: Prevents man-in-the-middle attacks on OAuth communication.
+
+**Impact**: Invalid issuer URLs will cause `NewServer()` to fail with error.
+
+**Migration**:
+```go
+// ✅ Valid configurations
+Issuer: "https://company.okta.com"              // Production
+Issuer: "http://localhost:8080"                 // Local testing only
+Issuer: "http://127.0.0.1:8080"                 // Local testing only
+
+// ❌ Invalid - will fail validation
+Issuer: "http://company.okta.com"               // Must use HTTPS
+Issuer: "company.okta.com"                      // Missing scheme
+Issuer: "https://192.168.1.1/issuer"            // IP addresses not allowed
+```
+
+### 2. State Signing Key Initialization
+
+**What changed**: `NewServer()` now panics if the state signing key cannot be generated via crypto/rand.
+
+**Why**: Prevents weak fallback that could allow state forgery attacks.
+
+**Impact**: Server startup will fail immediately if crypto/rand fails.
+
+**Migration**: No code changes needed. Ensure your system has a working CSPRNG (crypto/rand). This should never fail on healthy systems.
+
+### 3. Nonce Generation Failure Behavior
+
+**What changed**: `generateSecureNonce()` now panics instead of falling back to weak timestamp-based nonces.
+
+**Why**: Timestamp-based nonces are predictable and vulnerable to replay attacks.
+
+**Impact**: OAuth authorization requests will fail if crypto/rand fails.
+
+**Migration**: No code changes needed. Ensure your system has a working CSPRNG.
+
+### 4. CreateRequestAuthHook Now Rejects Requests
+
+**What changed**: `CreateRequestAuthHook()` now returns an error for all requests instead of silently allowing them through.
+
+**Why**: The previous implementation returned `nil` (allow-all), which created a security bypass if integrators relied on this hook for authentication. The hook's signature cannot propagate context changes, making it fundamentally unable to perform real auth.
+
+**Impact**: Any code using `CreateRequestAuthHook()` will now reject all requests with an error.
+
+**Migration**: Switch to `WithOAuth()` tool-level middleware, which properly handles authentication and context propagation:
+```go
+// ❌ Old (deprecated, now fails all requests)
+hook := oauth.CreateRequestAuthHook(validator)
+
+// ✅ New
+oauthServer, oauthOption, _ := mark3labs.WithOAuth(mux, &oauth.Config{...})
+mcpServer := server.NewMCPServer("name", "1.0.0", oauthOption)
+```
+
+### 5. Redirect URI Validation in Config
+
+**What changed**: `Config.Validate()` now validates redirect URIs and fixed redirect URIs at startup. HTTPS is required for non-localhost URIs, fragments are rejected, and whitespace-only URI lists are caught.
+
+**Why**: Prevents open redirect vulnerabilities and ensures OAuth 2.0 spec compliance.
+
+**Impact**: Existing configs with HTTP redirect URIs for non-localhost hosts, or URIs containing fragments, will fail validation at startup.
+
+**Migration**:
+```go
+// ✅ Valid
+RedirectURIs: "https://app.example.com/callback"
+RedirectURIs: "http://localhost:3000/callback"
+
+// ❌ Invalid - will fail validation
+RedirectURIs: "http://app.example.com/callback"      // Must use HTTPS
+RedirectURIs: "https://app.example.com/cb#fragment"   // No fragments allowed
+RedirectURIs: " , , "                                  // No valid URIs
+```
+
+### 6. Error Message Simplification
+
+**What changed**: Security-sensitive error paths now return generic error messages to prevent information leakage.
+
+**Why**: Prevents attackers from learning internal system details through error messages.
+
+**Impact**: Debugging authentication failures from client-side may be less informative.
+
+**Migration**: Use server logs for detailed debugging. Client-facing errors are intentionally generic for security.
+
+### Backward-Compatible Changes
+
+The following security improvements are **fully backward-compatible**:
+
+- **Token cache expiry fix** - Cache now respects JWT expiration times
+- **State replay protection** - Legacy states without timestamp/nonce still accepted for rolling deploys
+- **Input validation** - Only affects malformed/abusive requests
+- **Query injection prevention** - Transparent fix, no API changes
+- **go-sdk adapter session management** - Fully backwards compatible
+
+---
+
+---
+
 ## 🔒 Secrets Management
 
 ### Never Commit Secrets
@@ -375,16 +482,44 @@ oauth.WithOAuth(mux, &oauth.Config{
 
 ## 🚨 Rate Limiting
 
-### Protect OAuth Endpoints
+### Built-in Rate Limiter
+
+oauth-mcp-proxy includes a built-in rate limiter:
+
+```go
+import "github.com/tuannvm/oauth-mcp-proxy"
+
+limiter := oauth.NewRateLimiter(time.Minute, 100) // 100 req/min
+if !limiter.Allow("client-key") {
+    http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+    return
+}
+```
+
+**Features:**
+- Fixed-window rate limiting
+- Automatic cleanup of expired entries
+- Thread-safe (uses sync.RWMutex)
+- Background cleanup goroutine support
+
+```go
+// Start background cleanup (prevents memory leaks)
+stopCleanup := limiter.StartCleanup(5 * time.Minute)
+defer stopCleanup()
+```
+
+### Additional Protection
+
+For OAuth endpoints, consider additional rate limiting:
 
 ```go
 import "golang.org/x/time/rate"
 
-limiter := rate.NewLimiter(10, 20)  // 10 req/s, burst 20
+globalLimiter := rate.NewLimiter(10, 20)  // 10 req/s, burst 20
 
 func rateLimitMiddleware(next http.Handler) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-        if !limiter.Allow() {
+        if !globalLimiter.Allow() {
             http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
             return
         }
@@ -405,9 +540,77 @@ OAuth handler automatically adds security headers:
 ```
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
-X-XSS-Protection: 1; mode=block
-Cache-Control: no-store (for sensitive endpoints)
+Cache-Control: no-store, no-cache, max-age=0
+Pragma: no-cache
+Content-Security-Policy: default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none'; font-src 'none'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self';
 ```
+
+---
+
+## 🛡️ Built-in Security Features
+
+oauth-mcp-proxy includes multiple security defenses:
+
+### State Replay Protection
+
+OAuth state parameters are protected against replay attacks:
+
+- **Timestamp validation** - States expire after 10 minutes
+- **Nonce uniqueness** - Each state uses a cryptographically random nonce
+- **Replay detection** - Nonce tracked and rejected if reused
+- **Automatic cleanup** - Expired nonces removed to prevent memory leaks
+- **Rolling deploy compatible** - Accepts states from older versions during upgrades
+
+### Token Cache Security
+
+Token caching respects JWT expiration times:
+
+```go
+// Cache uses min(token.expiry, now + 5 minutes)
+// This prevents cached tokens from being used past actual expiration
+```
+
+### Input Validation
+
+Request parameters are validated to prevent abuse:
+
+- **code parameter** - Max 512 characters
+- **state parameter** - Max 256 characters  
+- **code_challenge parameter** - Max 256 characters
+- **Request body size** - Limited to prevent DoS (1MB for /oauth/token, 256KB for /oauth/register)
+
+### Issuer URL Validation
+
+OIDC provider issuer URLs are validated:
+
+- **HTTPS required** for non-localhost URLs (prevents MITM attacks)
+- **Valid URL format** - Must parse correctly
+- **Not empty** - Issuer must be specified
+- **No raw IP addresses** - Hostnames only (prevents misconfiguration)
+
+### Constant-Time Cryptography
+
+HMAC signatures verified using constant-time comparison:
+
+```go
+// Prevents timing attacks on signature validation
+hmac.Equal([]byte(receivedSig), []byte(expectedSig))
+```
+
+### Secure Random Number Generation
+
+Nonces generated using crypto/rand:
+
+- **Panics on failure** - No fallback to weak timestamp-based nonces
+- **Cryptographically secure** - Uses system CSPRNG
+
+### Session Management (Official SDK)
+
+The official SDK adapter populates the go-sdk auth context:
+
+- **auth.TokenInfo populated** - User ID and expiration set for session binding
+- **Session hijacking prevention** - Requests from different users rejected
+- **CORS support** - OPTIONS requests pass through for browser clients
 
 Add application-level headers:
 
@@ -429,15 +632,28 @@ http.ListenAndServeTLS(":443", "cert.pem", "key.pem", securityHeaders(mux))
 
 ### Pre-Production
 
+**Configuration:**
 - [ ] All secrets in environment variables (not code)
 - [ ] HTTPS enabled with valid certificates
 - [ ] Audience configured and validated
 - [ ] JWT secret 32+ bytes (HMAC) or provider-issued (OIDC)
+- [ ] Issuer URL validated (OIDC providers)
 - [ ] Redirect URIs properly configured
-- [ ] Token expiration set appropriately
+
+**Built-in Security (already enabled):**
+- [x] State replay protection (timestamp + nonce)
+- [x] Nonce cleanup (memory leak prevention)
+- [x] Token cache with JWT expiry awareness
+- [x] Input validation (parameter length limits)
+- [x] Request body size limits (DoS prevention)
+- [x] Constant-time HMAC comparison
+- [x] Secure nonce generation (crypto/rand)
+- [x] Security headers (CSP, X-Frame-Options, etc.)
+- [x] CORS support (OPTIONS pass-through)
+
+**Optional:**
 - [ ] Custom logger configured (no sensitive data logged)
-- [ ] Rate limiting on OAuth endpoints
-- [ ] Security headers configured
+- [ ] Additional rate limiting on OAuth endpoints
 
 ### Regular Maintenance
 

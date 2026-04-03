@@ -10,25 +10,69 @@ Complete reference for oauth-mcp-proxy configuration options.
 type Config struct {
     // Required
     Provider string // "hmac", "okta", "google", "azure"
-    Audience string // Your API audience
 
     // Provider-specific
-    Issuer    string // OIDC issuer URL (Okta/Google/Azure)
+    Issuer    string // OIDC issuer URL (Okta/Google/Azure) - validated for HTTPS
     JWTSecret []byte // Secret key (HMAC only)
+    Audience string // Your API audience
 
     // Optional - OAuth Mode
-    Mode string // "native" or "proxy" - auto-detected
+    Mode string // "native" or "proxy" - auto-detected from ClientID presence
 
-    // Optional - Proxy Mode
-    ClientID     string // OAuth client ID
+    // Optional - Proxy Mode (server-side OAuth flow)
+    ClientID     string // OAuth client ID (triggers proxy mode)
     ClientSecret string // OAuth client secret
     ServerURL    string // Your server's public URL
-    RedirectURIs string // Allowed redirect URIs
+    RedirectURIs string // Allowed redirect URIs (comma-separated allowlist)
+    
+    // Optional - Fixed Redirect Mode (for mcp-remote)
+    FixedRedirectURI             string // Single fixed redirect URI for proxying callbacks
+    AllowedClientRedirectDomains string // Comma-separated domain suffixes allowed for client redirects
+
+    // Optional - Token Validation
+    Scopes              []string // OAuth scopes
+    SkipAudienceCheck  bool   // Skip audience validation (not recommended)
 
     // Optional - Logging
     Logger Logger // Custom logger implementation
 }
 ```
+
+### Key Configuration Notes
+
+**Issuer URL Validation (OIDC providers):**
+- Must use HTTPS for non-localhost URLs (enforced for security)
+- Must be a valid URL format
+- Cannot be empty
+- Prevents MITM attacks on OAuth communication
+
+**⚠️ Breaking Changes (v1.1.0):**
+
+1. **Issuer URL Validation**: OIDC providers now enforce HTTPS. Non-HTTPS issuer URLs will cause configuration validation to fail.
+   ```go
+   // ✅ Valid
+   Issuer: "https://company.okta.com"
+   Issuer: "http://localhost:8080"  // Testing only
+
+   // ❌ Invalid - will fail validation
+   Issuer: "http://company.okta.com"  // Must use HTTPS
+   ```
+
+2. **State Signing Key**: `NewServer()` now panics if state signing key cannot be generated (crypto/rand failure). This ensures security but means server startup will fail on systems with broken CSPRNG.
+
+3. **Nonce Generation**: `generateSecureNonce()` now panics instead of falling back to weak timestamp-based nonces.
+
+See [SECURITY.md](SECURITY.md) for detailed migration guide.
+
+**Redirect URI Configuration (Proxy Mode):**
+- **Option 1:** `RedirectURIs` - Comma-separated allowlist of exact URIs
+- **Option 2:** `FixedRedirectURI` - Single fixed URI for proxying callbacks
+- **Additional:** `AllowedClientRedirectDomains` - Domain suffixes allowed for client redirects (in addition to localhost)
+
+**Mode Detection:**
+- `Mode = "native"` - Token validation only (ClientID not set)
+- `Mode = "proxy"` - Full OAuth flow (ClientID is set)
+- Auto-detected from `ClientID` presence if not specified
 
 ---
 
