@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"fmt"
 	"testing"
 	"time"
 )
@@ -18,7 +19,7 @@ func TestTokenCacheExpiry(t *testing.T) {
 
 	// Add a token with very short expiry
 	tokenHash := "test-token-hash"
-	expiresAt := time.Now().Add(10 * time.Millisecond)
+	expiresAt := time.Now().Add(50 * time.Millisecond)
 	cache.setCachedToken(tokenHash, user, expiresAt)
 
 	// Should be cached immediately
@@ -31,7 +32,7 @@ func TestTokenCacheExpiry(t *testing.T) {
 	}
 
 	// Wait for expiry
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// Should be expired now
 	cached, exists = cache.getCachedToken(tokenHash)
@@ -43,7 +44,7 @@ func TestTokenCacheExpiry(t *testing.T) {
 	}
 }
 
-func TestTokenCacheConcurrentExpiry(t *testing.T) {
+func TestTokenCacheMultipleEntriesExpiry(t *testing.T) {
 	cache := &TokenCache{
 		cache: make(map[string]*CachedToken),
 	}
@@ -56,17 +57,17 @@ func TestTokenCacheConcurrentExpiry(t *testing.T) {
 
 	// Add multiple tokens with short expiry
 	for i := 0; i < 10; i++ {
-		tokenHash := "test-token-hash-" + string(rune('0'+i))
-		expiresAt := time.Now().Add(10 * time.Millisecond)
+		tokenHash := fmt.Sprintf("test-token-hash-%d", i)
+		expiresAt := time.Now().Add(50 * time.Millisecond)
 		cache.setCachedToken(tokenHash, user, expiresAt)
 	}
 
 	// Wait for expiry
-	time.Sleep(20 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond)
 
 	// All should be expired
 	for i := 0; i < 10; i++ {
-		tokenHash := "test-token-hash-" + string(rune('0'+i))
+		tokenHash := fmt.Sprintf("test-token-hash-%d", i)
 		_, exists := cache.getCachedToken(tokenHash)
 		if exists {
 			t.Errorf("Token %s should be expired", tokenHash)

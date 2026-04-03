@@ -1,6 +1,7 @@
 package oauth
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -86,7 +87,7 @@ func TestValidateIssuerURL(t *testing.T) {
 			if tt.expectErr {
 				if err == nil {
 					t.Errorf("Expected error but got none")
-				} else if tt.errMsg != "" && !containsString(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Expected error containing %q, got %q", tt.errMsg, err.Error())
 				}
 			} else {
@@ -158,7 +159,7 @@ func TestValidateRedirectURI(t *testing.T) {
 			if tt.expectErr {
 				if err == nil {
 					t.Errorf("Expected error but got none")
-				} else if tt.errMsg != "" && !containsString(err.Error(), tt.errMsg) {
+				} else if tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
 					t.Errorf("Expected error containing %q, got %q", tt.errMsg, err.Error())
 				}
 			} else {
@@ -168,18 +169,4 @@ func TestValidateRedirectURI(t *testing.T) {
 			}
 		})
 	}
-}
-
-// Helper function to check if string contains substring
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
