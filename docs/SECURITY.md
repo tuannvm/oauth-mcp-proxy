@@ -4,6 +4,75 @@ This guide outlines security best practices when using oauth-mcp-proxy in produc
 
 ---
 
+## Breaking Changes (Security Hardening v1.1.0)
+
+The following security improvements introduce breaking changes:
+
+### 1. Issuer URL Validation (CRITICAL)
+
+**What changed**: OIDC providers (Okta, Google, Azure) now enforce HTTPS validation for issuer URLs in `Config.Validate()`.
+
+**Why**: Prevents man-in-the-middle attacks on OAuth communication.
+
+**Impact**: Invalid issuer URLs will cause `NewServer()` to fail with error.
+
+**Migration**:
+```go
+// ✅ Valid configurations
+Issuer: "https://company.okta.com"              // Production
+Issuer: "http://localhost:8080"                 // Local testing only
+Issuer: "http://127.0.0.1:8080"                 // Local testing only
+
+// ❌ Invalid - will fail validation
+Issuer: "http://company.okta.com"               // Must use HTTPS
+Issuer: "company.okta.com"                      // Missing scheme
+Issuer: "https://192.168.1.1/issuer"            // IP addresses not allowed
+```
+
+### 2. State Signing Key Initialization
+
+**What changed**: `NewServer()` now panics if the state signing key cannot be generated via crypto/rand.
+
+**Why**: Prevents weak fallback that could allow state forgery attacks.
+
+**Impact**: Server startup will fail immediately if crypto/rand fails.
+
+**Migration**: No code changes needed. Ensure your system has a working CSPRNG (crypto/rand). This should never fail on healthy systems.
+
+### 3. Nonce Generation Failure Behavior
+
+**What changed**: `generateSecureNonce()` now panics instead of falling back to weak timestamp-based nonces.
+
+**Why**: Timestamp-based nonces are predictable and vulnerable to replay attacks.
+
+**Impact**: OAuth authorization requests will fail if crypto/rand fails.
+
+**Migration**: No code changes needed. Ensure your system has a working CSPRNG.
+
+### 4. Error Message Simplification
+
+**What changed**: Security-sensitive error paths now return generic error messages to prevent information leakage.
+
+**Why**: Prevents attackers from learning internal system details through error messages.
+
+**Impact**: Debugging authentication failures from client-side may be less informative.
+
+**Migration**: Use server logs for detailed debugging. Client-facing errors are intentionally generic for security.
+
+### Backwards Compatible Changes
+
+The following security improvements are **fully backwards compatible**:
+
+- **Token cache expiry fix** - Cache now respects JWT expiration times
+- **State replay protection** - Legacy states without timestamp/nonce still accepted for rolling deploys
+- **Input validation** - Only affects malformed/abusive requests
+- **Query injection prevention** - Transparent fix, no API changes
+- **go-sdk adapter session management** - Fully backwards compatible
+
+---
+
+---
+
 ## 🔒 Secrets Management
 
 ### Never Commit Secrets

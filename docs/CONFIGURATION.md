@@ -46,6 +46,24 @@ type Config struct {
 - Cannot be empty
 - Prevents MITM attacks on OAuth communication
 
+**⚠️ Breaking Changes (v1.1.0):**
+
+1. **Issuer URL Validation**: OIDC providers now enforce HTTPS. Non-HTTPS issuer URLs will cause configuration validation to fail.
+   ```go
+   // ✅ Valid
+   Issuer: "https://company.okta.com"
+   Issuer: "http://localhost:8080"  // Testing only
+
+   // ❌ Invalid - will fail validation
+   Issuer: "http://company.okta.com"  // Must use HTTPS
+   ```
+
+2. **State Signing Key**: `NewServer()` now panics if state signing key cannot be generated (crypto/rand failure). This ensures security but means server startup will fail on systems with broken CSPRNG.
+
+3. **Nonce Generation**: `generateSecureNonce()` now panics instead of falling back to weak timestamp-based nonces.
+
+See [SECURITY.md](SECURITY.md) for detailed migration guide.
+
 **Redirect URI Configuration (Proxy Mode):**
 - **Option 1:** `RedirectURIs` - Comma-separated allowlist of exact URIs
 - **Option 2:** `FixedRedirectURI` - Single fixed URI for proxying callbacks

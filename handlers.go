@@ -408,11 +408,12 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Update OAuth2 config with redirect URI
-	h.oauth2Config.RedirectURL = redirectURI
+	// Create a copy of oauth2Config for this request to avoid concurrent mutations
+	oauth2Cfg := *h.oauth2Config
+	oauth2Cfg.RedirectURL = redirectURI
 
 	// Create authorization URL
-	authURL := h.oauth2Config.AuthCodeURL(actualState, oauth2.AccessTypeOffline)
+	authURL := oauth2Cfg.AuthCodeURL(actualState, oauth2.AccessTypeOffline)
 
 	// Add PKCE parameters to the URL if provided
 	if codeChallenge != "" {
@@ -596,7 +597,9 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 			h.logger.Info("OAuth2: Token exchange using fixed redirect URI: %s", redirectURI)
 		}
 
-		h.oauth2Config.RedirectURL = redirectURI
+		// Create a copy of oauth2Config for this request to avoid concurrent mutations
+		oauth2Cfg := *h.oauth2Config
+		oauth2Cfg.RedirectURL = redirectURI
 
 		// For PKCE, we need to manually add the code_verifier to the token exchange
 		// Since oauth2 library doesn't support PKCE directly, we'll use a custom approach
@@ -615,7 +618,7 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Exchange code for tokens
-		token, err = h.oauth2Config.Exchange(ctx, code)
+		token, err = oauth2Cfg.Exchange(ctx, code)
 		if err != nil {
 			h.logger.Error("OAuth2: Token exchange failed: %v", err)
 			http.Error(w, "Token exchange failed", http.StatusInternalServerError)

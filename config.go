@@ -98,6 +98,27 @@ func (c *Config) Validate() error {
 		if c.RedirectURIs == "" && c.FixedRedirectURI == "" {
 			return fmt.Errorf("proxy mode requires RedirectURIs or FixedRedirectURI")
 		}
+
+		// Validate redirect URIs for security
+		if c.RedirectURIs != "" {
+			// Split by comma and validate each redirect URI
+			for _, uri := range strings.Split(c.RedirectURIs, ",") {
+				uri = strings.TrimSpace(uri)
+				if uri == "" {
+					continue
+				}
+				if err := ValidateRedirectURI(uri); err != nil {
+					return fmt.Errorf("invalid redirect URI '%s': %w", uri, err)
+				}
+			}
+		}
+
+		// Validate fixed redirect URI if set
+		if c.FixedRedirectURI != "" {
+			if err := ValidateRedirectURI(c.FixedRedirectURI); err != nil {
+				return fmt.Errorf("invalid fixed redirect URI: %w", err)
+			}
+		}
 	}
 
 	return nil

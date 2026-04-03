@@ -172,6 +172,50 @@ if !limiter.Allow("client-ip") {
 
 ---
 
+## Breaking Changes (Security Hardening)
+
+### v1.0.0 → v1.1.0
+
+The following security improvements introduce **breaking changes**:
+
+**1. Issuer URL Validation (CRITICAL)**
+- **Change**: OIDC providers now enforce HTTPS validation for issuer URLs
+- **Impact**: Invalid issuer URLs will cause `NewServer()` to fail
+- **Migration**: Ensure your `Issuer` config uses HTTPS (or localhost for testing)
+  ```go
+  // ✅ Valid
+  Issuer: "https://company.okta.com"
+  Issuer: "http://localhost:8080"  // Testing only
+
+  // ❌ Invalid - will fail validation
+  Issuer: "http://company.okta.com"  // Not localhost
+  Issuer: "company.okta.com"         // Missing scheme
+  ```
+
+**2. State Signing Key Initialization**
+- **Change**: `NewServer()` now panics if state signing key cannot be generated
+- **Impact**: Server startup will fail if crypto/rand fails (should never happen on healthy systems)
+- **Migration**: Ensure your system has a working CSPRNG. No code changes needed.
+
+**3. Nonce Generation Failure Behavior**
+- **Change**: `generateSecureNonce()` now panics instead of falling back to weak timestamp-based nonces
+- **Impact**: OAuth authorization requests will fail if crypto/rand fails
+- **Migration**: Ensure your system has a working CSPRNG. No code changes needed.
+
+**4. Error Message Simplification**
+- **Change**: Security-sensitive error messages are less verbose to prevent information leakage
+- **Impact**: Debugging authentication failures may require checking logs
+- **Migration**: Use server logs for detailed debugging; client errors are intentionally generic
+
+### No Migration Needed For
+
+- **Token cache expiry fix** - Fully backwards compatible
+- **State replay protection** - Legacy states without timestamp/nonce still accepted
+- **Input validation** - Only affects malformed requests
+- **go-sdk adapter fixes** - Fully backwards compatible
+
+---
+
 ## Quick Start
 
 ### Using mark3labs/mcp-go
