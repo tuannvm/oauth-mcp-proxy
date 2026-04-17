@@ -976,8 +976,11 @@ func (h *OAuth2Handler) isValidRedirectURI(uri string) bool {
 
 // validateOAuthParams performs basic input validation to prevent abuse
 func (h *OAuth2Handler) validateOAuthParams(r *http.Request) error {
-	// Basic length validation to prevent abuse
-	if code := r.FormValue("code"); len(code) > 512 {
+	// Basic length validation to prevent abuse.
+	// 4096 accommodates providers that issue JWT-shaped codes (Azure/Entra
+	// codes are routinely 1500-2000+ chars). The 1MB body-size limit at the
+	// token endpoint is the primary DoS guard.
+	if code := r.FormValue("code"); len(code) > 4096 {
 		return fmt.Errorf("invalid code parameter length")
 	}
 	if state := r.FormValue("state"); len(state) > 256 {
