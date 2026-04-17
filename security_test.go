@@ -187,7 +187,7 @@ func TestOAuthParameterValidation(t *testing.T) {
 		{
 			name: "Code too long",
 			params: map[string]string{
-				"code": strings.Repeat("a", 513), // 513 characters
+				"code": strings.Repeat("a", 4097), // 4097 characters (> 4096 limit)
 			},
 			expectError: true,
 			errorMsg:    "invalid code parameter length",
