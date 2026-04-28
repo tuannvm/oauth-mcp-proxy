@@ -94,6 +94,7 @@ func (s *Server) RegisterHandlers(mux *http.ServeMux) {
 	mux.HandleFunc("/.well-known/oauth-protected-resource", s.handler.HandleProtectedResourceMetadata)
 	mux.HandleFunc("/.well-known/jwks.json", s.handler.HandleJWKS)
 	mux.HandleFunc("/oauth/authorize", s.handler.HandleAuthorize)
+	mux.HandleFunc("/callback", s.handler.HandleCallbackRedirect)
 	mux.HandleFunc("/oauth/callback", s.handler.HandleCallback)
 	mux.HandleFunc("/oauth/token", s.handler.HandleToken)
 	mux.HandleFunc("/oauth/register", s.handler.HandleRegister)
@@ -277,11 +278,15 @@ func (s *Server) WrapHandler(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" || len(authHeader) < 7 || authHeader[:7] != "Bearer " {
-			s.logger.Info("OAuth: No bearer token provided, returning 401 with discovery info")
+			s.logger.Debug("OAuth: No bearer token provided, returning 401 with discovery info")
 
 			metadataURL := s.GetProtectedResourceMetadataURL()
-			w.Header().Add("WWW-Authenticate", `Bearer realm="OAuth", error="invalid_token", error_description="Missing or invalid access token"`)
-			w.Header().Add("WWW-Authenticate", fmt.Sprintf(`resource_metadata="%s"`, metadataURL))
+			w.Header().Set("WWW-Authenticate", fmt.Sprintf(
+				// Preserve the historical Bearer challenge here for clients that
+				// key off invalid_token when bootstrapping OAuth discovery.
+				`Bearer realm="OAuth", error="invalid_token", error_description="Missing or invalid access token", resource_metadata="%s"`,
+				metadataURL,
+			))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 
@@ -301,8 +306,10 @@ func (s *Server) WrapHandler(next http.Handler) http.Handler {
 			s.logger.Info("OAuth: Token validation failed: %v", err)
 
 			metadataURL := s.GetProtectedResourceMetadataURL()
-			w.Header().Add("WWW-Authenticate", `Bearer realm="OAuth", error="invalid_token", error_description="Authentication failed"`)
-			w.Header().Add("WWW-Authenticate", fmt.Sprintf(`resource_metadata="%s"`, metadataURL))
+			w.Header().Set("WWW-Authenticate", fmt.Sprintf(
+				`Bearer realm="OAuth", error="invalid_token", error_description="Authentication failed", resource_metadata="%s"`,
+				metadataURL,
+			))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusUnauthorized)
 

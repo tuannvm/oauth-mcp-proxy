@@ -350,9 +350,11 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	if redirectURI == "" && h.config.FixedRedirectURI != "" {
+	fixedRedirectURI := h.configuredFixedRedirectURI()
+
+	if redirectURI == "" && fixedRedirectURI != "" {
 		// Fixed redirect mode: Use server's redirect URI to OAuth provider, proxy back to client
-		h.logger.Info("OAuth2: Fixed redirect mode - using server URI: %s (will proxy to client: %s)", h.config.FixedRedirectURI, clientRedirectURI)
+		h.logger.Info("OAuth2: Fixed redirect mode - using server URI: %s (will proxy to client: %s)", fixedRedirectURI, clientRedirectURI)
 
 		// Validate client redirect URI format and security
 		if clientRedirectURI == "" {
@@ -396,7 +398,7 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, "Invalid redirect_uri for fixed redirect mode", http.StatusBadRequest)
 			return
 		}
-		redirectURI = strings.TrimSpace(h.config.FixedRedirectURI)
+		redirectURI = fixedRedirectURI
 		h.logger.Info("OAuth2: Validated client redirect URI for proxy: %s", clientRedirectURI)
 		// For fixed redirect mode, create signed state with client redirect URI
 		// Create state data with redirect URI
@@ -490,7 +492,7 @@ func (h *OAuth2Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If using fixed redirect URI, handle proxy callback
-	if h.config.FixedRedirectURI != "" {
+	if h.configuredFixedRedirectURI() != "" {
 		// Verify and decode signed state parameter
 		stateData, err := h.verifyState(state)
 		if err != nil {
@@ -610,8 +612,8 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 		// Set redirect URI for token exchange
 		redirectURI := clientRedirectURI
-		if h.config.FixedRedirectURI != "" && !h.isValidRedirectURI(clientRedirectURI) {
-			redirectURI = strings.TrimSpace(h.config.FixedRedirectURI)
+		if fixedRedirectURI := h.configuredFixedRedirectURI(); fixedRedirectURI != "" && !h.isValidRedirectURI(clientRedirectURI) {
+			redirectURI = fixedRedirectURI
 			h.logger.Info("OAuth2: Token exchange using fixed redirect URI: %s", redirectURI)
 		}
 
@@ -673,27 +675,7 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 
 	h.logger.Info("OAuth2: Token exchange successful")
 
-	// Build response
-	response := map[string]interface{}{
-		"access_token": token.AccessToken,
-		"token_type":   token.TokenType,
-		"expires_in":   int(time.Until(token.Expiry).Seconds()),
-	}
-
-	// Add optional fields
-	if token.RefreshToken != "" {
-		response["refresh_token"] = token.RefreshToken
-	}
-
-	// Add ID token if present
-	if idToken, ok := token.Extra("id_token").(string); ok {
-		response["id_token"] = idToken
-	}
-
-	// Add scope if present
-	if scope, ok := token.Extra("scope").(string); ok {
-		response["scope"] = scope
-	}
+	response := h.buildTokenResponse(token)
 
 	// Send response
 	h.addSecurityHeaders(w)
@@ -702,6 +684,46 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		h.logger.Error("OAuth2: Failed to encode token response: %v", err)
 	}
+}
+
+// buildTokenResponse builds an RFC 6749-style token response with provider-specific behavior.
+func (h *OAuth2Handler) buildTokenResponse(token *oauth2.Token) map[string]interface{} {
+	accessToken := token.AccessToken
+
+	if h.config != nil && h.config.Provider == "google" {
+		if idToken, ok := token.Extra("id_token").(string); ok && idToken != "" {
+			if !looksLikeJWT(token.AccessToken) {
+				if h.logger != nil {
+					h.logger.Info("OAuth2: Google provider detected opaque access token, using id_token as access_token for downstream compatibility")
+				}
+				accessToken = idToken
+			}
+		}
+	}
+
+	response := map[string]interface{}{
+		"access_token": accessToken,
+		"token_type":   token.TokenType,
+		"expires_in":   int(time.Until(token.Expiry).Seconds()),
+	}
+
+	if token.RefreshToken != "" {
+		response["refresh_token"] = token.RefreshToken
+	}
+
+	if idToken, ok := token.Extra("id_token").(string); ok {
+		response["id_token"] = idToken
+	}
+
+	if scope, ok := token.Extra("scope").(string); ok {
+		response["scope"] = scope
+	}
+
+	return response
+}
+
+func looksLikeJWT(token string) bool {
+	return strings.Count(token, ".") == 2
 }
 
 // showSuccessPage displays a success page after OAuth completion
@@ -734,6 +756,22 @@ func truncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// configuredFixedRedirectURI returns the effective fixed redirect URI.
+// Prefer the explicit FixedRedirectURI, but preserve the historical behavior
+// where a single RedirectURIs value also acted as fixed redirect mode.
+func (h *OAuth2Handler) configuredFixedRedirectURI() string {
+	if h == nil || h.config == nil {
+		return ""
+	}
+	if trimmed := strings.TrimSpace(h.config.FixedRedirectURI); trimmed != "" {
+		return trimmed
+	}
+	if redirects := strings.TrimSpace(h.config.RedirectURIs); redirects != "" && !strings.Contains(redirects, ",") {
+		return redirects
+	}
+	return ""
 }
 
 // pkceTransport adds PKCE code_verifier to token exchange requests

@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -370,4 +372,299 @@ func TestOIDCValidator_InitializationValidation(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestOIDCValidator_GoogleTokenInfoClaimsValidation(t *testing.T) {
+	tests := []struct {
+		name             string
+		validator        *OIDCValidator
+		claims           jwt.MapClaims
+		expectErr        bool
+		errContains      string
+		expectedSubject  string
+		expectedUsername string
+		expectedEmail    string
+	}{
+		{
+			name: "valid claims with email",
+			validator: &OIDCValidator{
+				audience:          "my-client-id.apps.googleusercontent.com",
+				skipAudienceCheck: false,
+			},
+			claims: jwt.MapClaims{
+				"aud":   "my-client-id.apps.googleusercontent.com",
+				"sub":   "user-123",
+				"email": "user@example.com",
+			},
+			expectedSubject:  "user-123",
+			expectedUsername: "user@example.com",
+			expectedEmail:    "user@example.com",
+		},
+		{
+			name: "valid claims without email",
+			validator: &OIDCValidator{
+				audience:          "my-client-id.apps.googleusercontent.com",
+				skipAudienceCheck: false,
+			},
+			claims: jwt.MapClaims{
+				"aud": "my-client-id.apps.googleusercontent.com",
+				"sub": "user-456",
+			},
+			expectedSubject:  "user-456",
+			expectedUsername: "user-456",
+			expectedEmail:    "",
+		},
+		{
+			name: "valid tokeninfo access token claims with user_id fallback",
+			validator: &OIDCValidator{
+				audience:          "my-client-id.apps.googleusercontent.com",
+				skipAudienceCheck: false,
+			},
+			claims: jwt.MapClaims{
+				"aud":       "my-client-id.apps.googleusercontent.com",
+				"user_id":   "google-user-123",
+				"email":     "user@example.com",
+				"scope":     "openid email profile",
+				"issued_to": "my-client-id.apps.googleusercontent.com",
+			},
+			expectedSubject:  "google-user-123",
+			expectedUsername: "user@example.com",
+			expectedEmail:    "user@example.com",
+		},
+		{
+			name: "missing subject",
+			validator: &OIDCValidator{
+				audience:          "my-client-id.apps.googleusercontent.com",
+				skipAudienceCheck: false,
+			},
+			claims: jwt.MapClaims{
+				"aud": "my-client-id.apps.googleusercontent.com",
+			},
+			expectErr:   true,
+			errContains: "missing subject",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			user, err := tt.validator.userFromGoogleTokenInfoClaims(tt.claims)
+
+			if tt.expectErr {
+				if err == nil {
+					t.Fatalf("expected error, got nil")
+				}
+				if tt.errContains != "" && !strings.Contains(err.Error(), tt.errContains) {
+					t.Fatalf("expected error containing %q, got %q", tt.errContains, err.Error())
+				}
+				return
+			}
+
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if user.Subject != tt.expectedSubject {
+				t.Fatalf("expected subject %q, got %q", tt.expectedSubject, user.Subject)
+			}
+
+			if user.Username != tt.expectedUsername {
+				t.Fatalf("expected username %q, got %q", tt.expectedUsername, user.Username)
+			}
+
+			if user.Email != tt.expectedEmail {
+				t.Fatalf("expected email %q, got %q", tt.expectedEmail, user.Email)
+			}
+		})
+	}
+}
+
+func TestOIDCValidator_ValidateGoogleOpaqueTokenRunsTokenValidators(t *testing.T) {
+	originalURL := googleTokenInfoURL
+	t.Cleanup(func() {
+		googleTokenInfoURL = originalURL
+	})
+
+	requestErrCh := make(chan string, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("access_token"); got != "opaque-token" {
+			requestErrCh <- got
+			http.Error(w, "unexpected access_token", http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"aud":"my-client-id.apps.googleusercontent.com","user_id":"google-user-123","email":"user@example.com"}`))
+	}))
+	defer server.Close()
+
+	googleTokenInfoURL = server.URL
+
+	t.Run("validator success", func(t *testing.T) {
+		called := false
+		validator := &OIDCValidator{
+			TokenValidators: []func(claims jwt.MapClaims) error{
+				func(claims jwt.MapClaims) error {
+					called = true
+					if claims["aud"] != "my-client-id.apps.googleusercontent.com" {
+						t.Fatalf("unexpected audience claim: %v", claims["aud"])
+					}
+					return nil
+				},
+			},
+		}
+
+		user, err := validator.validateGoogleOpaqueToken(context.Background(), "opaque-token")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		select {
+		case got := <-requestErrCh:
+			t.Fatalf("expected access_token query parameter %q, got %q", "opaque-token", got)
+		default:
+		}
+		if !called {
+			t.Fatal("expected token validators to be called")
+		}
+		if user.Subject != "google-user-123" {
+			t.Fatalf("expected subject %q, got %q", "google-user-123", user.Subject)
+		}
+	})
+
+	t.Run("validator failure", func(t *testing.T) {
+		validator := &OIDCValidator{
+			TokenValidators: []func(claims jwt.MapClaims) error{
+				func(claims jwt.MapClaims) error {
+					return validatorError("audience rejected")
+				},
+			},
+		}
+
+		_, err := validator.validateGoogleOpaqueToken(context.Background(), "opaque-token")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		select {
+		case got := <-requestErrCh:
+			t.Fatalf("expected access_token query parameter %q, got %q", "opaque-token", got)
+		default:
+		}
+		if !strings.Contains(err.Error(), "validation function 0 failed with error: audience rejected") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestOIDCValidator_ValidateGoogleOpaqueTokenAudienceHandling(t *testing.T) {
+	originalURL := googleTokenInfoURL
+	t.Cleanup(func() {
+		googleTokenInfoURL = originalURL
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"aud":"different-audience","user_id":"google-user-123","email":"user@example.com"}`))
+	}))
+	defer server.Close()
+
+	googleTokenInfoURL = server.URL
+
+	t.Run("skip audience check", func(t *testing.T) {
+		validator := &OIDCValidator{
+			audience:          "my-client-id.apps.googleusercontent.com",
+			skipAudienceCheck: true,
+		}
+
+		user, err := validator.validateGoogleOpaqueToken(context.Background(), "opaque-token")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if user.Subject != "google-user-123" {
+			t.Fatalf("expected subject %q, got %q", "google-user-123", user.Subject)
+		}
+	})
+
+	t.Run("enforce audience check", func(t *testing.T) {
+		validator := &OIDCValidator{
+			audience:        "my-client-id.apps.googleusercontent.com",
+			TokenValidators: []func(claims jwt.MapClaims) error{},
+		}
+		validator.TokenValidators = append(validator.TokenValidators, validator.validateAudience)
+
+		_, err := validator.validateGoogleOpaqueToken(context.Background(), "opaque-token")
+		if err == nil {
+			t.Fatal("expected error, got nil")
+		}
+		if !strings.Contains(err.Error(), "invalid audience: expected my-client-id.apps.googleusercontent.com, got different-audience") {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+}
+
+func TestOIDCValidator_ValidateGoogleOpaqueTokenNetworkErrorDoesNotLeakToken(t *testing.T) {
+	originalURL := googleTokenInfoURL
+	t.Cleanup(func() {
+		googleTokenInfoURL = originalURL
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	googleTokenInfoURL = server.URL
+	server.Close()
+
+	token := "ya29.sensitive-access-token"
+	validator := &OIDCValidator{}
+
+	_, err := validator.validateGoogleOpaqueToken(context.Background(), token)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Fatalf("expected sanitized error without token, got: %v", err)
+	}
+}
+
+func TestOIDCValidator_ShouldUseGoogleOpaqueFallback(t *testing.T) {
+	validator := &OIDCValidator{providerName: "google"}
+
+	tests := []struct {
+		name  string
+		token string
+		err   error
+		want  bool
+	}{
+		{
+			name:  "google opaque token candidate without verifier error",
+			token: "ya29.a0ARW5m7Opaque",
+			want:  true,
+		},
+		{
+			name:  "non google opaque token is rejected",
+			token: "opaque-token",
+			want:  false,
+		},
+		{
+			name:  "malformed jwt error only falls back for google candidate",
+			token: "ya29.a0ARW5m7Opaque",
+			err:   validatorError("malformed jwt"),
+			want:  true,
+		},
+		{
+			name:  "malformed jwt error does not fall back for arbitrary token",
+			token: "opaque-token",
+			err:   validatorError("malformed jwt"),
+			want:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := validator.shouldUseGoogleOpaqueFallback(tt.token, tt.err); got != tt.want {
+				t.Fatalf("shouldUseGoogleOpaqueFallback(%q, %v) = %v, want %v", tt.token, tt.err, got, tt.want)
+			}
+		})
+	}
+}
+
+type validatorError string
+
+func (e validatorError) Error() string {
+	return string(e)
 }
