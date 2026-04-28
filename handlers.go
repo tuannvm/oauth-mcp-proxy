@@ -15,7 +15,9 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -27,6 +29,10 @@ type OAuth2Handler struct {
 	config       *OAuth2Config
 	oauth2Config *oauth2.Config
 	logger       Logger
+
+	// seenNonces tracks used nonces for replay protection (10-minute window)
+	seenNonces  map[string]time.Time
+	seenNonceMu sync.RWMutex
 }
 
 // GetConfig returns the OAuth2 configuration
@@ -119,19 +125,36 @@ func NewOAuth2Handler(cfg *OAuth2Config, logger Logger) *OAuth2Handler {
 		key := make([]byte, 32)
 		if _, err := rand.Read(key); err != nil {
 			logger.Error("Failed to generate state signing key: %v", err)
-			// Use a deterministic fallback (not ideal, but better than nothing)
-			cfg.stateSigningKey = []byte("insecure-fallback-key-please-configure-JWT_SECRET")
-			logger.Warn("Using insecure fallback key. Please configure JWT_SECRET environment variable.")
+			panic(fmt.Sprintf("FATAL: Failed to generate secure state signing key: %v. Cannot start OAuth handler without secure random key.", err))
 		} else {
 			cfg.stateSigningKey = key
 		}
 	}
 
-	return &OAuth2Handler{
+	h := &OAuth2Handler{
+		seenNonces:   make(map[string]time.Time),
 		config:       cfg,
 		oauth2Config: oauth2Config,
 		logger:       logger,
 	}
+
+	// Background goroutine to clean up expired nonces (avoids O(n) per-request cleanup)
+	go func() {
+		ticker := time.NewTicker(2 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			h.seenNonceMu.Lock()
+			now := time.Now()
+			for n, expiry := range h.seenNonces {
+				if expiry.Before(now) {
+					delete(h.seenNonces, n)
+				}
+			}
+			h.seenNonceMu.Unlock()
+		}
+	}()
+
+	return h
 }
 
 // discoverOIDCEndpoints uses OIDC discovery to get the correct authorization and token endpoints
@@ -218,6 +241,7 @@ func (h *OAuth2Handler) HandleJWKS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	h.addSecurityHeaders(w)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "public, max-age=300") // Cache for 5 minutes
 
@@ -288,6 +312,13 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 	}
 	if r.Method != "GET" {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Validate OAuth parameters to prevent DoS (cap field lengths)
+	if err := h.validateOAuthParams(r); err != nil {
+		h.logger.Error("OAuth2: Invalid OAuth parameters: %v", err)
+		http.Error(w, "Invalid request parameters", http.StatusBadRequest)
 		return
 	}
 
@@ -364,7 +395,7 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		// This prevents open redirect attacks while still supporting development tools and trusted hosts.
 		if !h.isAllowedClientRedirectURI(clientRedirectURI) {
 			h.logger.Warn("SECURITY: Fixed redirect mode only allows localhost or configured domains, rejecting: %s from %s", clientRedirectURI, r.RemoteAddr)
-			http.Error(w, fmt.Sprintf("Invalid redirect_uri for fixed redirect mode: %s", clientRedirectURI), http.StatusBadRequest)
+			http.Error(w, "Invalid redirect_uri for fixed redirect mode", http.StatusBadRequest)
 			return
 		}
 		redirectURI = fixedRedirectURI
@@ -372,8 +403,10 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		// For fixed redirect mode, create signed state with client redirect URI
 		// Create state data with redirect URI
 		stateData := map[string]string{
-			"state":    state,
-			"redirect": clientRedirectURI,
+			"state":     state,
+			"redirect":  clientRedirectURI,
+			"timestamp": fmt.Sprintf("%d", time.Now().Unix()),
+			"nonce":     generateSecureNonce(),
 		}
 
 		// Sign state for integrity protection
@@ -395,11 +428,12 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Update OAuth2 config with redirect URI
-	h.oauth2Config.RedirectURL = redirectURI
+	// Create a copy of oauth2Config for this request to avoid concurrent mutations
+	oauth2Cfg := *h.oauth2Config
+	oauth2Cfg.RedirectURL = redirectURI
 
 	// Create authorization URL
-	authURL := h.oauth2Config.AuthCodeURL(actualState, oauth2.AccessTypeOffline)
+	authURL := oauth2Cfg.AuthCodeURL(actualState, oauth2.AccessTypeOffline)
 
 	// Add PKCE parameters to the URL if provided
 	if codeChallenge != "" {
@@ -447,7 +481,7 @@ func (h *OAuth2Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	if errorParam != "" {
 		errorDesc := r.URL.Query().Get("error_description")
 		h.logger.Error("OAuth2: Authorization error: %s - %s", errorParam, errorDesc)
-		http.Error(w, fmt.Sprintf("Authorization failed: %s", errorDesc), http.StatusBadRequest)
+		http.Error(w, "Authorization failed", http.StatusBadRequest)
 		return
 	}
 
@@ -482,8 +516,21 @@ func (h *OAuth2Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 			h.logger.Info("OAuth2: State verified, proxying callback to client redirect URI: %s", originalRedirectURI)
 
-			// Build proxy callback URL
-			proxyURL := fmt.Sprintf("%s?code=%s&state=%s", originalRedirectURI, code, originalState)
+			// Build proxy callback URL with proper URL encoding to prevent query injection
+			redirectURL, err := url.Parse(originalRedirectURI)
+			if err != nil {
+				h.logger.Error("OAuth2: Failed to parse redirect URI: %v", err)
+				http.Error(w, "Invalid redirect URI", http.StatusBadRequest)
+				return
+			}
+
+			// Use url.Values to properly encode query parameters
+			queryParams := redirectURL.Query()
+			queryParams.Set("code", code)
+			queryParams.Set("state", originalState)
+			redirectURL.RawQuery = queryParams.Encode()
+
+			proxyURL := redirectURL.String()
 			http.Redirect(w, r, proxyURL, http.StatusFound)
 			return
 		}
@@ -522,11 +569,21 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.logger.Info("OAuth2: Token exchange request from %s", r.RemoteAddr)
+	// Limit request body size to prevent DoS (max 1MB for token exchange)
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20) // 1 MB
+	defer func() { _ = r.Body.Close() }()
 
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
 		h.logger.Error("OAuth2: Failed to parse form: %v", err)
 		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	// Validate OAuth parameters to prevent DoS (cap field lengths)
+	if err := h.validateOAuthParams(r); err != nil {
+		h.logger.Error("OAuth2: Invalid OAuth parameters: %v", err)
+		http.Error(w, "Invalid request parameters", http.StatusBadRequest)
 		return
 	}
 
@@ -560,11 +617,15 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 			h.logger.Info("OAuth2: Token exchange using fixed redirect URI: %s", redirectURI)
 		}
 
-		h.oauth2Config.RedirectURL = redirectURI
+		// Create a copy of oauth2Config for this request to avoid concurrent mutations
+		oauth2Cfg := *h.oauth2Config
+		oauth2Cfg.RedirectURL = redirectURI
 
 		// For PKCE, we need to manually add the code_verifier to the token exchange
 		// Since oauth2 library doesn't support PKCE directly, we'll use a custom approach
-		ctx := context.Background()
+		// Use request-scoped context with timeout to prevent DoS from slow IdP
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
 
 		// Create custom HTTP client for token exchange with PKCE
 		if codeVerifier != "" {
@@ -579,7 +640,7 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Exchange code for tokens
-		token, err = h.oauth2Config.Exchange(ctx, code)
+		token, err = oauth2Cfg.Exchange(ctx, code)
 		if err != nil {
 			h.logger.Error("OAuth2: Token exchange failed: %v", err)
 			http.Error(w, "Token exchange failed", http.StatusInternalServerError)
@@ -593,7 +654,9 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		ctx := context.Background()
+		// Use request-scoped context with timeout to prevent DoS from slow IdP
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
 		src := h.oauth2Config.TokenSource(ctx, &oauth2.Token{
 			RefreshToken: refreshToken,
 		})
@@ -615,10 +678,8 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	response := h.buildTokenResponse(token)
 
 	// Send response
+	h.addSecurityHeaders(w)
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("Pragma", "no-cache")
-	w.WriteHeader(http.StatusOK)
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		h.logger.Error("OAuth2: Failed to encode token response: %v", err)
@@ -671,9 +732,8 @@ func (h *OAuth2Handler) showSuccessPage(w http.ResponseWriter, code, state strin
 	h.logger.Info("OAuth2: Authorization successful - code: %s, state: %s",
 		truncateString(code, 10), truncateString(state, 10))
 
+	h.addSecurityHeaders(w)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprintf(w, `<!DOCTYPE html>
 		<html lang="en">
@@ -774,6 +834,13 @@ func (h *OAuth2Handler) signState(stateData map[string]string) (string, error) {
 	if redirect, ok := stateData["redirect"]; ok {
 		dataToSign += "redirect=" + redirect
 	}
+	// Include timestamp and nonce in signature for replay protection
+	if timestamp, ok := stateData["timestamp"]; ok {
+		dataToSign += "&timestamp=" + timestamp
+	}
+	if nonce, ok := stateData["nonce"]; ok {
+		dataToSign += "&nonce=" + nonce
+	}
 
 	// Create HMAC signature
 	mac := hmac.New(sha256.New, h.config.stateSigningKey)
@@ -812,6 +879,30 @@ func (h *OAuth2Handler) verifyState(encodedState string) (map[string]string, err
 	}
 	delete(stateData, "sig") // Remove for verification
 
+	// Check for timestamp/nonce for replay protection
+	// Note: For rolling deploy compatibility, states without these fields are accepted
+	// (they were issued by older versions). New deployments should always include them.
+	timestampStr, hasTimestamp := stateData["timestamp"]
+	nonce, hasNonce := stateData["nonce"]
+
+	// Validate timestamp if present (required for replay protection)
+	var timestamp int64
+	var age int64
+	if hasTimestamp {
+		var err error
+		timestamp, err = strconv.ParseInt(timestampStr, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("state has invalid timestamp format")
+		}
+		age = time.Now().Unix() - timestamp
+		if age < 0 {
+			return nil, fmt.Errorf("state timestamp is in the future")
+		}
+		if age > 600 { // 10 minutes
+			return nil, fmt.Errorf("state is too old (possible replay attack)")
+		}
+	}
+
 	// Recalculate signature using same deterministic approach
 	dataToSign := ""
 	if state, ok := stateData["state"]; ok {
@@ -819,6 +910,13 @@ func (h *OAuth2Handler) verifyState(encodedState string) (map[string]string, err
 	}
 	if redirect, ok := stateData["redirect"]; ok {
 		dataToSign += "redirect=" + redirect
+	}
+	// Include timestamp and nonce in signature verification
+	if timestamp, ok := stateData["timestamp"]; ok {
+		dataToSign += "&timestamp=" + timestamp
+	}
+	if nonce, ok := stateData["nonce"]; ok {
+		dataToSign += "&nonce=" + nonce
 	}
 
 	mac := hmac.New(sha256.New, h.config.stateSigningKey)
@@ -828,6 +926,17 @@ func (h *OAuth2Handler) verifyState(encodedState string) (map[string]string, err
 	// Verify signature using constant-time comparison
 	if !hmac.Equal([]byte(receivedSig), []byte(expectedSig)) {
 		return nil, fmt.Errorf("invalid state signature - possible tampering detected")
+	}
+
+	// Check nonce for replay protection (ONLY AFTER signature is verified)
+	if hasNonce && nonce != "" {
+		h.seenNonceMu.Lock()
+		if _, exists := h.seenNonces[nonce]; exists {
+			h.seenNonceMu.Unlock()
+			return nil, fmt.Errorf("state already used (replay attack)")
+		}
+		h.seenNonces[nonce] = time.Now().Add(10 * time.Minute)
+		h.seenNonceMu.Unlock()
 	}
 
 	return stateData, nil
@@ -915,6 +1024,18 @@ func (h *OAuth2Handler) validateOAuthParams(r *http.Request) error {
 	if challenge := r.FormValue("code_challenge"); len(challenge) > 256 {
 		return fmt.Errorf("invalid code_challenge parameter length")
 	}
+	if redirectURI := r.FormValue("redirect_uri"); len(redirectURI) > 2048 {
+		return fmt.Errorf("invalid redirect_uri parameter length")
+	}
+	if codeVerifier := r.FormValue("code_verifier"); len(codeVerifier) > 256 {
+		return fmt.Errorf("invalid code_verifier parameter length")
+	}
+	if refreshToken := r.FormValue("refresh_token"); len(refreshToken) > 2048 {
+		return fmt.Errorf("invalid refresh_token parameter length")
+	}
+	if clientID := r.FormValue("client_id"); len(clientID) > 256 {
+		return fmt.Errorf("invalid client_id parameter length")
+	}
 	return nil
 }
 
@@ -924,4 +1045,20 @@ func (h *OAuth2Handler) addSecurityHeaders(w http.ResponseWriter) {
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Cache-Control", "no-store, no-cache, max-age=0")
 	w.Header().Set("Pragma", "no-cache")
+	// HSTS with 1 year max-age including subdomains (only add if using HTTPS)
+	// Note: This is not added here because handlers don't know the request scheme.
+	// Consumers should add HSTS at their HTTP server level.
+	// CSP to restrict resource loading and prevent XSS
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none'; font-src 'none'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self';")
+}
+
+// generateSecureNonce generates a cryptographically secure random nonce
+// Panics if crypto/rand fails (extremely rare and indicates system-level failure)
+func generateSecureNonce() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		// Panic on crypto failure - timestamp fallback weakens replay protection
+		panic(fmt.Sprintf("failed to generate secure nonce: %v", err))
+	}
+	return hex.EncodeToString(b)
 }

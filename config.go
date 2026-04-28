@@ -74,6 +74,10 @@ func (c *Config) Validate() error {
 		if c.Issuer == "" {
 			return fmt.Errorf("issuer is required for OIDC provider")
 		}
+		// Enforce issuer URL validation for OIDC providers to prevent MITM
+		if err := ValidateIssuerURL(c.Issuer); err != nil {
+			return fmt.Errorf("invalid issuer URL: %w", err)
+		}
 	default:
 		return fmt.Errorf("unknown provider: %s (supported: hmac, okta, google, azure)", c.Provider)
 	}
@@ -93,6 +97,31 @@ func (c *Config) Validate() error {
 		}
 		if c.RedirectURIs == "" && c.FixedRedirectURI == "" {
 			return fmt.Errorf("proxy mode requires RedirectURIs or FixedRedirectURI")
+		}
+
+		// Validate redirect URIs for security
+		if c.RedirectURIs != "" {
+			validCount := 0
+			for _, uri := range strings.Split(c.RedirectURIs, ",") {
+				uri = strings.TrimSpace(uri)
+				if uri == "" {
+					continue
+				}
+				if err := ValidateRedirectURI(uri); err != nil {
+					return fmt.Errorf("invalid redirect URI '%s': %w", uri, err)
+				}
+				validCount++
+			}
+			if validCount == 0 && c.FixedRedirectURI == "" {
+				return fmt.Errorf("proxy mode requires at least one valid redirect URI")
+			}
+		}
+
+		// Validate fixed redirect URI if set
+		if c.FixedRedirectURI != "" {
+			if err := ValidateRedirectURI(c.FixedRedirectURI); err != nil {
+				return fmt.Errorf("invalid fixed redirect URI: %w", err)
+			}
 		}
 	}
 

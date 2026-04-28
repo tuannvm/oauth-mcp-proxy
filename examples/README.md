@@ -20,9 +20,9 @@ examples/
 | SDK | Example | Tools | Provider | Features |
 |-----|---------|-------|----------|----------|
 | **mark3labs** | simple | 1 (greet) | Okta | Basic OAuth, env vars |
-| **mark3labs** | advanced | 3 (greet, echo, time) | Okta | ConfigBuilder, env vars, logging |
+| **mark3labs** | advanced | 1 (get_user_info) | Okta | ConfigBuilder, env vars, logging, status endpoint |
 | **official** | simple | 1 (greet) | Okta | Basic OAuth, env vars |
-| **official** | advanced | 3 (greet, whoami, server_time) | Okta | ConfigBuilder, env vars, logging |
+| **official** | advanced | 1 (get_user_info) | Okta | ConfigBuilder, env vars, logging, status endpoint |
 
 ---
 
@@ -282,6 +282,17 @@ if !ok {
 user.Subject   // OAuth "sub" claim (user ID)
 user.Username  // "preferred_username" or "sub"
 user.Email     // "email" claim
+user.Expiry    // Token expiration time (from JWT "exp" claim)
+```
+
+For the **official SDK**, you can also access user info via the go-sdk's auth context:
+
+```go
+import "github.com/modelcontextprotocol/go-sdk/auth"
+
+tokenInfo := auth.TokenInfoFromContext(ctx)
+// tokenInfo.UserID     - maps to user.Subject
+// tokenInfo.Expiration - token expiry time
 ```
 
 ---
@@ -322,7 +333,7 @@ curl -H "Accept: application/json, text/event-stream" ...
 ### Dockerfile Example
 
 ```dockerfile
-FROM golang:1.24 AS builder
+FROM golang:1.25 AS builder
 WORKDIR /app
 COPY . .
 RUN go build -o server ./examples/mark3labs/advanced

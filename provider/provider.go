@@ -22,6 +22,7 @@ type User struct {
 	Username string
 	Email    string
 	Subject  string
+	Expiry   time.Time // Token expiration time from JWT 'exp' claim
 }
 
 // Logger interface for pluggable logging
@@ -135,6 +136,12 @@ func (v *HMACValidator) ValidateToken(ctx context.Context, tokenString string) (
 		return nil, fmt.Errorf("missing subject in token")
 	}
 
+	// Extract token expiry time from 'exp' claim
+	if expClaim, ok := claims["exp"]; ok {
+		if expFloat, ok := expClaim.(float64); ok {
+			user.Expiry = time.Unix(int64(expFloat), 0)
+		}
+	}
 	return user, nil
 }
 
@@ -285,11 +292,20 @@ func (v *OIDCValidator) ValidateToken(ctx context.Context, tokenString string) (
 		return nil, err
 	}
 
-	return &User{
+	user := &User{
 		Subject:  claims.Subject,
 		Username: claims.PreferredUsername,
 		Email:    claims.Email,
-	}, nil
+	}
+
+	// Extract token expiry time from 'exp' claim
+	if expClaim, ok := rawClaims["exp"]; ok {
+		if expFloat, ok := expClaim.(float64); ok {
+			user.Expiry = time.Unix(int64(expFloat), 0)
+		}
+	}
+
+	return user, nil
 }
 
 func (v *OIDCValidator) validateGoogleOpaqueToken(ctx context.Context, tokenString string) (*User, error) {

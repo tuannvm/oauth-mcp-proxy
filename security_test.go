@@ -4,11 +4,14 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestRedirectURIValidation(t *testing.T) {
@@ -245,10 +248,11 @@ func TestSecurityHeaders(t *testing.T) {
 	handler.addSecurityHeaders(recorder)
 
 	expectedHeaders := map[string]string{
-		"X-Content-Type-Options": "nosniff",
-		"X-Frame-Options":        "DENY",
-		"Cache-Control":          "no-store, no-cache, max-age=0",
-		"Pragma":                 "no-cache",
+		"X-Content-Type-Options":  "nosniff",
+		"X-Frame-Options":         "DENY",
+		"Cache-Control":           "no-store, no-cache, max-age=0",
+		"Pragma":                  "no-cache",
+		"Content-Security-Policy": "default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none'; font-src 'none'; connect-src 'none'; object-src 'none'; frame-ancestors 'none'; form-action 'self';",
 	}
 
 	for header, expectedValue := range expectedHeaders {
@@ -371,6 +375,8 @@ func TestAttackScenarios(t *testing.T) {
 			stateSigningKey: key,
 			RedirectURIs:    "https://mcp-server.com/oauth/callback",
 		},
+		seenNonces:  make(map[string]time.Time),
+		seenNonceMu: sync.RWMutex{},
 	}
 
 	t.Run("StateTampering", func(t *testing.T) {
@@ -427,8 +433,10 @@ func TestAttackScenarios(t *testing.T) {
 
 	t.Run("LeakedKeyForgedState", func(t *testing.T) {
 		maliciousState := map[string]string{
-			"state":    "attack",
-			"redirect": "https://evil.com/steal",
+			"state":     "attack",
+			"redirect":  "https://evil.com/steal",
+			"timestamp": fmt.Sprintf("%d", time.Now().Unix()),
+			"nonce":     generateSecureNonce(),
 		}
 
 		forgedState, err := handler.signState(maliciousState)
@@ -467,8 +475,10 @@ func TestAttackScenarios(t *testing.T) {
 		}
 
 		stateData := map[string]string{
-			"state":    "inspector-session",
-			"redirect": clientRedirectURI,
+			"state":     "inspector-session",
+			"redirect":  clientRedirectURI,
+			"timestamp": fmt.Sprintf("%d", time.Now().Unix()),
+			"nonce":     generateSecureNonce(),
 		}
 
 		signedState, err := handler.signState(stateData)

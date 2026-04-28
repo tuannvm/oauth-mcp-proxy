@@ -49,8 +49,10 @@ http.ListenAndServe(":8080", handler)
 - **Simple integration** - One `WithOAuth()` call protects all tools
 - **Automatic 401 handling** - RFC 6750 compliant error responses with OAuth discovery
 - **Zero per-tool config** - All tools automatically protected
-- **Fast token caching** - 5-min cache, <5ms validation
-- **Production ready** - Security hardened, battle-tested
+- **Fast token caching** - 5-min cache with JWT expiry awareness
+- **Security hardened** - State replay protection, DoS prevention, input validation
+- **Built-in rate limiting** - Token-based rate limiter included
+- **CORS support** - OPTIONS pass-through for browser clients
 - **Multiple providers** - HMAC, Okta, Google, Azure AD
 
 ---
@@ -128,6 +130,89 @@ flowchart TB
 2. Validates against your OAuth provider (with caching)
 3. Adds authenticated user to request context
 4. All your tools automatically protected
+
+---
+
+## 🔒 Security Features
+
+Production-ready security hardening built-in:
+
+### State Replay Protection
+- **Timestamp + nonce validation** - States include timestamp and nonce for replay attack prevention
+- **Automatic nonce cleanup** - Expired nonces removed before replay check (prevents memory leaks)
+- **Rolling deploy compatible** - Accepts legacy states without timestamp/nonce for zero-downtime upgrades
+
+### Token Security
+- **JWT expiry-aware caching** - Cache respects token expiration time (uses min(token.expiry, now+5min))
+- **Constant-time HMAC comparison** - Timing attack prevention for signature verification
+- **Secure nonce generation** - Panics on crypto/rand failure (no weak fallback)
+
+### Input Validation & DoS Prevention
+- **Parameter length limits** - code, state, code_challenge validated to prevent abuse
+- **Request body size limits** - MaxBytesReader on token endpoint (1MB), registration (256KB)
+- **Issuer URL validation** - Enforced HTTPS for non-localhost OIDC providers
+
+### Session Management (Official SDK)
+- **auth.TokenInfo population** - Populates go-sdk auth context for session binding
+- **User-based session tracking** - Prevents session hijacking via user ID verification
+
+### HTTP Security
+- **Security headers** - CSP, X-Frame-Options, X-Content-Type-Options, Cache-Control
+- **CORS support** - OPTIONS pass-through for browser clients
+- **RFC 6750 compliant** - Proper WWW-Authenticate headers with resource_metadata
+
+### Built-in Rate Limiting
+```go
+// Simple token-based rate limiter included
+limiter := oauth.NewRateLimiter(time.Minute, 100)
+if !limiter.Allow("client-ip") {
+    http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+}
+```
+
+---
+
+## Breaking Changes (Security Hardening)
+
+### v1.0.0 → v1.1.0
+
+The following security improvements introduce **breaking changes**:
+
+**1. Issuer URL Validation (CRITICAL)**
+- **Change**: OIDC providers now enforce HTTPS validation for issuer URLs
+- **Impact**: Invalid issuer URLs will cause `NewServer()` to fail
+- **Migration**: Ensure your `Issuer` config uses HTTPS (or localhost for testing)
+  ```go
+  // ✅ Valid
+  Issuer: "https://company.okta.com"
+  Issuer: "http://localhost:8080"  // Testing only
+
+  // ❌ Invalid - will fail validation
+  Issuer: "http://company.okta.com"  // Not localhost
+  Issuer: "company.okta.com"         // Missing scheme
+  ```
+
+**2. State Signing Key Initialization**
+- **Change**: `NewServer()` now panics if state signing key cannot be generated
+- **Impact**: Server startup will fail if crypto/rand fails (should never happen on healthy systems)
+- **Migration**: Ensure your system has a working CSPRNG. No code changes needed.
+
+**3. Nonce Generation Failure Behavior**
+- **Change**: `generateSecureNonce()` now panics instead of falling back to weak timestamp-based nonces
+- **Impact**: OAuth authorization requests will fail if crypto/rand fails
+- **Migration**: Ensure your system has a working CSPRNG. No code changes needed.
+
+**4. Error Message Simplification**
+- **Change**: Security-sensitive error messages are less verbose to prevent information leakage
+- **Impact**: Debugging authentication failures may require checking logs
+- **Migration**: Use server logs for detailed debugging; client errors are intentionally generic
+
+### No Migration Needed For
+
+- **Token cache expiry fix** - Fully backwards compatible
+- **State replay protection** - Legacy states without timestamp/nonce still accepted
+- **Input validation** - Only affects malformed requests
+- **go-sdk adapter fixes** - Fully backwards compatible
 
 ---
 

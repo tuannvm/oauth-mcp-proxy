@@ -58,7 +58,7 @@ func main() {
 		}, nil, nil
 	})
 
-	// Tool 2: Get user info
+	// Tool 2: Get user info (demonstrates both oauth-mcp-proxy and go-sdk context access)
 	type UserInfoParams struct{}
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:        "whoami",
@@ -72,7 +72,8 @@ func main() {
 		info := fmt.Sprintf(`User Information:
 - Subject: %s
 - Username: %s
-- Email: %s`, user.Subject, user.Username, user.Email)
+- Email: %s
+- Token Expires: %s`, user.Subject, user.Username, user.Email, user.Expiry.Format(time.RFC3339))
 
 		log.Printf("[whoami] Called by user: %s", user.Username)
 

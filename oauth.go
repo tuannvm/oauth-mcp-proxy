@@ -127,10 +127,24 @@ func (s *Server) ValidateTokenCached(ctx context.Context, token string) (*User, 
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}
 
-	expiresAt := time.Now().Add(5 * time.Minute)
+	// Cache with respect to token expiry: use min(token_expiry, now+5min)
+	// This prevents cached tokens from being used past their actual expiration time
+	maxCacheTime := time.Now().Add(5 * time.Minute)
+	var expiresAt time.Time
+	if !user.Expiry.IsZero() {
+		// Token has expiry - use the earlier of token expiry or max cache time
+		if user.Expiry.Before(maxCacheTime) {
+			expiresAt = user.Expiry
+		} else {
+			expiresAt = maxCacheTime
+		}
+	} else {
+		// No expiry (backwards compatibility) - use max cache time
+		expiresAt = maxCacheTime
+	}
 	s.cache.setCachedToken(tokenHash, user, expiresAt)
 
-	s.logger.Info("Authenticated user %s (cached for 5 minutes)", user.Username)
+	s.logger.Info("Authenticated user %s (cached until %v)", user.Username, expiresAt.Format(time.RFC3339))
 	return user, nil
 }
 
