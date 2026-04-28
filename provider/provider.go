@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -302,6 +303,10 @@ func (v *OIDCValidator) validateGoogleOpaqueToken(ctx context.Context, tokenStri
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
+		var urlErr *url.Error
+		if errors.As(err, &urlErr) {
+			err = urlErr.Err
+		}
 		return nil, fmt.Errorf("google tokeninfo request failed: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()

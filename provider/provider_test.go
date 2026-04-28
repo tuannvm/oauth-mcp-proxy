@@ -599,6 +599,28 @@ func TestOIDCValidator_ValidateGoogleOpaqueTokenAudienceHandling(t *testing.T) {
 	})
 }
 
+func TestOIDCValidator_ValidateGoogleOpaqueTokenNetworkErrorDoesNotLeakToken(t *testing.T) {
+	originalURL := googleTokenInfoURL
+	t.Cleanup(func() {
+		googleTokenInfoURL = originalURL
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	googleTokenInfoURL = server.URL
+	server.Close()
+
+	token := "ya29.sensitive-access-token"
+	validator := &OIDCValidator{}
+
+	_, err := validator.validateGoogleOpaqueToken(context.Background(), token)
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Fatalf("expected sanitized error without token, got: %v", err)
+	}
+}
+
 func TestOIDCValidator_ShouldUseGoogleOpaqueFallback(t *testing.T) {
 	validator := &OIDCValidator{providerName: "google"}
 

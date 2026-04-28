@@ -8,7 +8,7 @@ import (
 func TestConfiguredFixedRedirectURICompatibility(t *testing.T) {
 	tests := []struct {
 		name     string
-		config    *OAuth2Config
+		config   *OAuth2Config
 		expected string
 	}{
 		{
