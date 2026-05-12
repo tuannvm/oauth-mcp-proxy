@@ -16,6 +16,7 @@ type Config struct {
 	RedirectURIs                 string // Redirect URIs allowlist (single or comma-separated)
 	FixedRedirectURI             string // Optional fixed redirect URI used for proxying callbacks
 	AllowedClientRedirectDomains string // Optional comma-separated list of domain suffixes allowed for client redirect URIs in fixed redirect mode (in addition to localhost)
+	AllowedClientRedirectSchemes string // Optional comma-separated list of custom URI schemes allowed for client redirect URIs (e.g. "cursor,vscode") per RFC 8252
 
 	// OIDC configuration
 	Issuer       string
@@ -240,6 +241,13 @@ func (b *ConfigBuilder) WithAllowedClientRedirectDomains(domains string) *Config
 	return b
 }
 
+// WithAllowedClientRedirectSchemes sets allowed custom URI schemes for client redirect URIs
+// per RFC 8252 (OAuth 2.0 for Native Apps). Example: "cursor,vscode"
+func (b *ConfigBuilder) WithAllowedClientRedirectSchemes(schemes string) *ConfigBuilder {
+	b.config.AllowedClientRedirectSchemes = schemes
+	return b
+}
+
 // WithIssuer sets the OIDC issuer
 func (b *ConfigBuilder) WithIssuer(issuer string) *ConfigBuilder {
 	b.config.Issuer = issuer
@@ -364,6 +372,7 @@ func FromEnv() (*Config, error) {
 		WithRedirectURIs(getEnv("OAUTH_REDIRECT_URIS", "")).
 		WithFixedRedirectURI(getEnv("OAUTH_FIXED_REDIRECT_URI", "")).
 		WithAllowedClientRedirectDomains(getEnv("OAUTH_ALLOWED_CLIENT_REDIRECT_DOMAINS", "")).
+		WithAllowedClientRedirectSchemes(getEnv("OAUTH_ALLOWED_CLIENT_REDIRECT_SCHEMES", "")).
 		WithIssuer(getEnv("OIDC_ISSUER", "")).
 		WithAudience(getEnv("OIDC_AUDIENCE", "")).
 		WithClientID(getEnv("OIDC_CLIENT_ID", "")).

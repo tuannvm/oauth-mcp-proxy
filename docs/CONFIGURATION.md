@@ -28,6 +28,7 @@ type Config struct {
     // Optional - Fixed Redirect Mode (for mcp-remote)
     FixedRedirectURI             string // Single fixed redirect URI for proxying callbacks
     AllowedClientRedirectDomains string // Comma-separated domain suffixes allowed for client redirects
+    AllowedClientRedirectSchemes string // Comma-separated custom URI schemes (e.g. "cursor,vscode") per RFC 8252
 
     // Optional - Token Validation
     Scopes              []string // OAuth scopes
@@ -68,6 +69,7 @@ See [SECURITY.md](SECURITY.md) for detailed migration guide.
 - **Option 1:** `RedirectURIs` - Comma-separated allowlist of exact URIs
 - **Option 2:** `FixedRedirectURI` - Single fixed URI for proxying callbacks
 - **Additional:** `AllowedClientRedirectDomains` - Domain suffixes allowed for client redirects (in addition to localhost)
+- **Additional:** `AllowedClientRedirectSchemes` - Custom URI schemes for native app redirect URIs per RFC 8252 (e.g. `cursor,vscode`)
 
 **Mode Detection:**
 - `Mode = "native"` - Token validation only (ClientID not set)
@@ -137,6 +139,7 @@ _, oauthOption, _ := oauth.WithOAuth(mux, cfg)
 - `MCP_PORT` - Server port (default: 8080)
 - `HTTPS_CERT_FILE` - TLS cert file (enables HTTPS)
 - `HTTPS_KEY_FILE` - TLS key file (enables HTTPS)
+- `OAUTH_ALLOWED_CLIENT_REDIRECT_SCHEMES` - Custom URI schemes for native apps (e.g. "cursor,vscode")
 
 **Benefits:**
 

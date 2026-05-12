@@ -387,6 +387,31 @@ oauth.WithOAuth(mux, &oauth.Config{
 - No fragment allowed (per OAuth 2.0 spec)
 - Exact match validation (no wildcards)
 
+### Custom URI Schemes (RFC 8252)
+
+Native desktop applications like Cursor and VS Code use custom URI schemes (e.g. `cursor://`, `vscode://`) for OAuth callbacks per [RFC 8252](https://datatracker.ietf.org/doc/html/rfc8252).
+
+Custom schemes are **opt-in** via `AllowedClientRedirectSchemes`. When not configured, only `http` (localhost) and `https` are accepted.
+
+```go
+oauth.WithOAuth(mux, &oauth.Config{
+    AllowedClientRedirectSchemes: "cursor,vscode",
+    // ...
+})
+```
+
+```
+ok:  cursor://anysphere.cursor-mcp/oauth/callback  (when "cursor" configured)
+ok:  vscode://vscode.github-authentication/callback (when "vscode" configured)
+bad: cursor://anysphere.cursor-mcp/oauth/callback   (when not configured)
+```
+
+**Security considerations:**
+
+- Any application on the device can register a custom URI scheme handler — PKCE is essential (already enforced by the OAuth flow)
+- Only allowlist schemes you explicitly trust
+- Custom scheme URIs bypass the domain suffix check (`AllowedClientRedirectDomains`) since they don't use traditional hostnames
+
 ---
 
 ## 🎫 Token Security

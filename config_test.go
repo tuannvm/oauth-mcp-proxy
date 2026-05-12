@@ -89,6 +89,20 @@ func TestConfigBuilder(t *testing.T) {
 			},
 			wantErr: true,
 		},
+		{
+			name: "config with allowed client redirect schemes",
+			buildFunc: func() (*Config, error) {
+				return NewConfigBuilder().
+					WithProvider("hmac").
+					WithAudience("test-audience").
+					WithJWTSecret([]byte("secret")).
+					WithAllowedClientRedirectSchemes("cursor,vscode").
+					Build()
+			},
+			wantURL:      "http://localhost:8080",
+			wantMode:     "native",
+			wantProvider: "hmac",
+		},
 	}
 
 	for _, tt := range tests {
@@ -109,6 +123,11 @@ func TestConfigBuilder(t *testing.T) {
 			}
 			if cfg.Provider != tt.wantProvider {
 				t.Errorf("Provider = %v, want %v", cfg.Provider, tt.wantProvider)
+			}
+			if tt.name == "config with allowed client redirect schemes" {
+				if cfg.AllowedClientRedirectSchemes != "cursor,vscode" {
+					t.Errorf("AllowedClientRedirectSchemes = %v, want %v", cfg.AllowedClientRedirectSchemes, "cursor,vscode")
+				}
 			}
 		})
 	}
