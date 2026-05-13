@@ -53,6 +53,10 @@ type OAuth2Config struct {
 	// that are allowed for client redirect URIs in fixed redirect mode (in addition to localhost).
 	AllowedClientRedirectDomains string
 
+	// AllowedClientRedirectSchemes is an optional comma-separated list of custom URI schemes
+	// allowed for client redirect URIs (e.g. "cursor,vscode") per RFC 8252.
+	AllowedClientRedirectSchemes string
+
 	// OIDC configuration
 	Issuer       string
 	Audience     string
@@ -219,6 +223,7 @@ func NewOAuth2ConfigFromConfig(cfg *Config, version string) *OAuth2Config {
 		RedirectURIs:                 cfg.RedirectURIs,
 		FixedRedirectURI:             cfg.FixedRedirectURI,
 		AllowedClientRedirectDomains: cfg.AllowedClientRedirectDomains,
+		AllowedClientRedirectSchemes: cfg.AllowedClientRedirectSchemes,
 		Issuer:                       cfg.Issuer,
 		Audience:                     cfg.Audience,
 		ClientID:                     cfg.ClientID,
@@ -368,14 +373,14 @@ func (h *OAuth2Handler) HandleAuthorize(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		// Additional security checks for client redirect URI
-		if parsedURI.Scheme != "http" && parsedURI.Scheme != "https" {
-			h.logger.Warn("SECURITY: Invalid redirect URI scheme: %s (must be http or https)", parsedURI.Scheme)
+		// Additional security checks for client redirect URI scheme
+		if !h.isAllowedScheme(parsedURI.Scheme) {
+			h.logger.Warn("SECURITY: Invalid redirect URI scheme: %s (must be http, https, or an allowed custom scheme)", parsedURI.Scheme)
 			http.Error(w, "Invalid redirect_uri scheme", http.StatusBadRequest)
 			return
 		}
 
-		// Enforce HTTPS for non-localhost URIs
+		// Enforce HTTPS for non-localhost URIs (only applies to http scheme; custom schemes skip this)
 		if parsedURI.Scheme == "http" && !isLocalhostURI(clientRedirectURI) {
 			h.logger.Warn("SECURITY: HTTP redirect URI not allowed for non-localhost: %s", clientRedirectURI)
 			http.Error(w, "HTTPS required for non-localhost redirect_uri", http.StatusBadRequest)
@@ -922,17 +927,22 @@ func (h *OAuth2Handler) isAllowedClientRedirectURI(uri string) bool {
 		return true
 	}
 
-	// For non-localhost URIs, require explicit domain suffix configuration
-	if h.config.AllowedClientRedirectDomains == "" {
-		return false
-	}
-
 	parsedURI, err := url.Parse(uri)
 	if err != nil {
 		return false
 	}
 
-	// Only allow HTTPS for non-localhost URIs
+	// Allow explicitly configured custom schemes (e.g. cursor://, vscode://) per RFC 8252
+	if h.isCustomScheme(parsedURI.Scheme) {
+		return true
+	}
+
+	// For non-localhost URIs with standard schemes, require explicit domain suffix configuration
+	if h.config.AllowedClientRedirectDomains == "" {
+		return false
+	}
+
+	// Only allow HTTPS for non-localhost URIs with standard schemes
 	if parsedURI.Scheme != "https" {
 		return false
 	}
@@ -953,6 +963,28 @@ func (h *OAuth2Handler) isAllowedClientRedirectURI(uri string) bool {
 		}
 	}
 
+	return false
+}
+
+// isAllowedScheme returns true for http, https, or any explicitly configured custom scheme.
+func (h *OAuth2Handler) isAllowedScheme(scheme string) bool {
+	if scheme == "http" || scheme == "https" {
+		return true
+	}
+	return h.isCustomScheme(scheme)
+}
+
+// isCustomScheme checks if scheme is in the configured AllowedClientRedirectSchemes list.
+func (h *OAuth2Handler) isCustomScheme(scheme string) bool {
+	if h.config.AllowedClientRedirectSchemes == "" {
+		return false
+	}
+	scheme = strings.ToLower(scheme)
+	for _, s := range strings.Split(h.config.AllowedClientRedirectSchemes, ",") {
+		if strings.TrimSpace(strings.ToLower(s)) == scheme {
+			return true
+		}
+	}
 	return false
 }
 

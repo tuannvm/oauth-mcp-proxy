@@ -77,7 +77,8 @@ func TestRedirectURIValidation(t *testing.T) {
 func TestIsAllowedClientRedirectURI(t *testing.T) {
 	tests := []struct {
 		name      string
-		allowed   string
+		allowed   string // AllowedClientRedirectDomains
+		schemes   string // AllowedClientRedirectSchemes
 		uri       string
 		isAllowed bool
 	}{
@@ -136,7 +137,7 @@ func TestIsAllowedClientRedirectURI(t *testing.T) {
 			isAllowed: false,
 		},
 		{
-			name:      "Non-HTTPS scheme rejected",
+			name:      "Non-HTTPS scheme rejected when not configured",
 			allowed:   "example.com",
 			uri:       "custom://example.com/callback",
 			isAllowed: false,
@@ -147,6 +148,41 @@ func TestIsAllowedClientRedirectURI(t *testing.T) {
 			uri:       "not-a-valid-uri",
 			isAllowed: false,
 		},
+		{
+			name:      "Custom scheme allowed when configured",
+			schemes:   "cursor",
+			uri:       "cursor://anysphere.cursor-mcp/oauth/callback",
+			isAllowed: true,
+		},
+		{
+			name:      "Custom scheme rejected when not configured",
+			uri:       "cursor://anysphere.cursor-mcp/oauth/callback",
+			isAllowed: false,
+		},
+		{
+			name:      "Unconfigured custom scheme rejected",
+			schemes:   "vscode",
+			uri:       "cursor://anysphere.cursor-mcp/oauth/callback",
+			isAllowed: false,
+		},
+		{
+			name:      "Multiple custom schemes - first match",
+			schemes:   "cursor, vscode",
+			uri:       "cursor://anysphere.cursor-mcp/oauth/callback",
+			isAllowed: true,
+		},
+		{
+			name:      "Multiple custom schemes - second match",
+			schemes:   "cursor, vscode",
+			uri:       "vscode://vscode.github-authentication/callback",
+			isAllowed: true,
+		},
+		{
+			name:      "Custom scheme case insensitive",
+			schemes:   "Cursor",
+			uri:       "cursor://anysphere.cursor-mcp/oauth/callback",
+			isAllowed: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -154,13 +190,14 @@ func TestIsAllowedClientRedirectURI(t *testing.T) {
 			handler := &OAuth2Handler{
 				config: &OAuth2Config{
 					AllowedClientRedirectDomains: tt.allowed,
+					AllowedClientRedirectSchemes: tt.schemes,
 				},
 				logger: &defaultLogger{},
 			}
 
 			got := handler.isAllowedClientRedirectURI(tt.uri)
 			if got != tt.isAllowed {
-				t.Errorf("isAllowedClientRedirectURI(%q) = %v, want %v (allowed=%q)", tt.uri, got, tt.isAllowed, tt.allowed)
+				t.Errorf("isAllowedClientRedirectURI(%q) = %v, want %v (domains=%q, schemes=%q)", tt.uri, got, tt.isAllowed, tt.allowed, tt.schemes)
 			}
 		})
 	}
