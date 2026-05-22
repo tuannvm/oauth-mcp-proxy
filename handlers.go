@@ -211,6 +211,22 @@ func NewOAuth2ConfigFromConfig(cfg *Config, version string) *OAuth2Config {
 	if len(scopes) == 0 {
 		scopes = []string{"openid", "profile", "email"}
 	}
+	// In proxy mode, ensure offline_access is included so the upstream provider
+	// issues a refresh token. Most OIDC providers (Okta, Azure AD, etc.) require
+	// the offline_access scope for refresh tokens; access_type=offline alone is
+	// only recognised by Google.
+	if cfg.Mode == "proxy" {
+		hasOfflineAccess := false
+		for _, s := range scopes {
+			if s == "offline_access" {
+				hasOfflineAccess = true
+				break
+			}
+		}
+		if !hasOfflineAccess {
+			scopes = append(scopes, "offline_access")
+		}
+	}
 
 	return &OAuth2Config{
 		Enabled:                      true,
