@@ -185,12 +185,28 @@ func TestOAuthParameterValidation(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name: "Long provider code and refresh token accepted",
+			params: map[string]string{
+				"code":          strings.Repeat("a", 4096),
+				"refresh_token": strings.Repeat("a", 8192),
+			},
+			expectError: false,
+		},
+		{
 			name: "Code too long",
 			params: map[string]string{
-				"code": strings.Repeat("a", 513), // 513 characters
+				"code": strings.Repeat("a", 4097),
 			},
 			expectError: true,
 			errorMsg:    "invalid code parameter length",
+		},
+		{
+			name: "Refresh token too long",
+			params: map[string]string{
+				"refresh_token": strings.Repeat("a", 8193),
+			},
+			expectError: true,
+			errorMsg:    "invalid refresh_token parameter length",
 		},
 		{
 			name: "State too long",

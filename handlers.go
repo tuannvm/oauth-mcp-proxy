@@ -976,8 +976,10 @@ func (h *OAuth2Handler) isValidRedirectURI(uri string) bool {
 
 // validateOAuthParams performs basic input validation to prevent abuse
 func (h *OAuth2Handler) validateOAuthParams(r *http.Request) error {
-	// Basic length validation to prevent abuse
-	if code := r.FormValue("code"); len(code) > 512 {
+	// Basic length validation to prevent abuse. Authorization codes and refresh
+	// tokens are opaque and unbounded by spec; Entra ID codes exceed 512 bytes once a
+	// resource scope and offline_access are requested.
+	if code := r.FormValue("code"); len(code) > 4096 {
 		return fmt.Errorf("invalid code parameter length")
 	}
 	if state := r.FormValue("state"); len(state) > 256 {
@@ -992,7 +994,7 @@ func (h *OAuth2Handler) validateOAuthParams(r *http.Request) error {
 	if codeVerifier := r.FormValue("code_verifier"); len(codeVerifier) > 256 {
 		return fmt.Errorf("invalid code_verifier parameter length")
 	}
-	if refreshToken := r.FormValue("refresh_token"); len(refreshToken) > 2048 {
+	if refreshToken := r.FormValue("refresh_token"); len(refreshToken) > 8192 {
 		return fmt.Errorf("invalid refresh_token parameter length")
 	}
 	if clientID := r.FormValue("client_id"); len(clientID) > 256 {
