@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -574,14 +575,14 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
 		h.logger.Error("OAuth2: Failed to parse form: %v", err)
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		h.writeTokenError(w, http.StatusBadRequest, "invalid_request", "Malformed request body")
 		return
 	}
 
 	// Validate OAuth parameters to prevent DoS (cap field lengths)
 	if err := h.validateOAuthParams(r); err != nil {
 		h.logger.Error("OAuth2: Invalid OAuth parameters: %v", err)
-		http.Error(w, "Invalid request parameters", http.StatusBadRequest)
+		h.writeTokenError(w, http.StatusBadRequest, "invalid_request", "Invalid request parameters")
 		return
 	}
 
@@ -604,7 +605,7 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		// Validate parameters for authorization_code flow
 		if code == "" {
 			h.logger.Error("OAuth2: Missing authorization code")
-			http.Error(w, "Missing authorization code", http.StatusBadRequest)
+			h.writeTokenError(w, http.StatusBadRequest, "invalid_request", "Missing authorization code")
 			return
 		}
 
@@ -641,14 +642,14 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		token, err = oauth2Cfg.Exchange(ctx, code)
 		if err != nil {
 			h.logger.Error("OAuth2: Token exchange failed: %v", err)
-			http.Error(w, "Token exchange failed", http.StatusInternalServerError)
+			h.writeUpstreamTokenError(w, err, http.StatusInternalServerError)
 			return
 		}
 	case "refresh_token":
 		// Validate parameters for refresh_token flow
 		if refreshToken == "" {
 			h.logger.Error("OAuth2: Missing refresh token")
-			http.Error(w, "Missing refresh token", http.StatusBadRequest)
+			h.writeTokenError(w, http.StatusBadRequest, "invalid_request", "Missing refresh token")
 			return
 		}
 
@@ -662,12 +663,12 @@ func (h *OAuth2Handler) HandleToken(w http.ResponseWriter, r *http.Request) {
 		token, err = src.Token()
 		if err != nil {
 			h.logger.Error("OAuth2: Refresh token exchange failed: %v", err)
-			http.Error(w, "Token refresh failed", http.StatusBadGateway)
+			h.writeUpstreamTokenError(w, err, http.StatusBadGateway)
 			return
 		}
 	default:
 		h.logger.Error("OAuth2: Unsupported grant type: %s", grantType)
-		http.Error(w, "Unsupported grant type", http.StatusBadRequest)
+		h.writeTokenError(w, http.StatusBadRequest, "unsupported_grant_type", "Unsupported grant type")
 		return
 	}
 
@@ -972,6 +973,47 @@ func (h *OAuth2Handler) isValidRedirectURI(uri string) bool {
 	}
 
 	return false
+}
+
+// relayedTokenErrors are upstream token endpoint error codes (RFC 6749 §5.2)
+// that describe the client's grant or request, so the client can act on them
+// (e.g. invalid_grant: start a new authorization). Other upstream failures,
+// such as invalid_client, reflect the proxy's own configuration.
+var relayedTokenErrors = map[string]bool{
+	"invalid_grant":       true,
+	"invalid_request":     true,
+	"invalid_scope":       true,
+	"unauthorized_client": true,
+}
+
+// writeTokenError writes an RFC 6749 §5.2 JSON error response.
+func (h *OAuth2Handler) writeTokenError(w http.ResponseWriter, status int, code, description string) {
+	h.addSecurityHeaders(w)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	body := map[string]string{"error": code}
+	if description != "" {
+		body["error_description"] = description
+	}
+	if err := json.NewEncoder(w).Encode(body); err != nil {
+		h.logger.Error("OAuth2: Failed to encode token error response: %v", err)
+	}
+}
+
+// writeUpstreamTokenError relays an upstream 4xx grant error as 400 with the
+// provider's error code, and reports any other failure (including a 5xx that
+// carries a grant error code) as server_error with fallbackStatus.
+func (h *OAuth2Handler) writeUpstreamTokenError(w http.ResponseWriter, err error, fallbackStatus int) {
+	var retrieveErr *oauth2.RetrieveError
+	if errors.As(err, &retrieveErr) && isClientErrorResponse(retrieveErr.Response) && relayedTokenErrors[retrieveErr.ErrorCode] {
+		h.writeTokenError(w, http.StatusBadRequest, retrieveErr.ErrorCode, retrieveErr.ErrorDescription)
+		return
+	}
+	h.writeTokenError(w, fallbackStatus, "server_error", "Upstream token request failed")
+}
+
+func isClientErrorResponse(resp *http.Response) bool {
+	return resp != nil && resp.StatusCode >= 400 && resp.StatusCode < 500
 }
 
 // validateOAuthParams performs basic input validation to prevent abuse
