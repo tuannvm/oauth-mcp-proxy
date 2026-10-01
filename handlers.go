@@ -105,6 +105,12 @@ func NewOAuth2Handler(cfg *OAuth2Config, logger Logger) *OAuth2Handler {
 		}
 	}
 
+	// Public clients send client_id in the body (RFC 6749 §3.2.1). Auto-detection
+	// caches whichever style first succeeds, which can break later code exchanges.
+	if cfg.ClientSecret == "" {
+		endpoint.AuthStyle = oauth2.AuthStyleInParams
+	}
+
 	oauth2Config := &oauth2.Config{
 		ClientID:     cfg.ClientID,
 		ClientSecret: cfg.ClientSecret,
